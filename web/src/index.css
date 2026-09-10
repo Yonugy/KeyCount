@@ -1,0 +1,102 @@
+/* Design tokens from the dataviz skill's validated reference palette
+   (references/palette.md) -- dark-first per the system design doc's
+   "monkeytype-style, dark-mode-first" direction, with a real light theme
+   too (not an inverted hack). */
+
+:root {
+  color-scheme: dark;
+  --surface-1: #1a1a19; /* chart/card surface */
+  --plane: #0d0d0d; /* page background */
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #898781;
+  --gridline: #2c2c2a;
+  --baseline: #383835;
+  --accent: #3987e5; /* categorical slot 1 (blue), dark step */
+  --accent-dim: #184f95; /* sequential blue step 600 */
+  --success: #0ca30c;
+  --border: rgba(255, 255, 255, 0.1);
+  /* Same border color at higher opacity -- for a card that's a large,
+     mostly-empty panel on its own (no neighboring card to contrast
+     against), --border's normal 0.1 reads as basically invisible even
+     though it's the identical color used successfully on small, tightly
+     packed cards like the stat tiles. Added 2026-09-03 for the Profile
+     tab's activity-calendar card specifically. */
+  --border-strong: rgba(255, 255, 255, 0.32);
+
+  /* sequential blue ramp, for the heatmap (lightest = least activity) */
+  --seq-0: var(--surface-1);
+  --seq-1: #104281;
+  --seq-2: #184f95;
+  --seq-3: #1c5cab;
+  --seq-4: #256abf;
+  --seq-5: #2a78d6;
+
+  /* readable label ink for text drawn directly on a --seq-N fill (the
+     keyboard heatmap) -- every seq step in dark mode is dark enough that
+     white works throughout; the light theme's ramp crosses from light to
+     fairly saturated, so it switches partway down. Chosen per-step so the
+     component never has to branch on theme itself. */
+  --seq-0-ink: var(--text-muted);
+  --seq-1-ink: #ffffff;
+  --seq-2-ink: #ffffff;
+  --seq-3-ink: #ffffff;
+  --seq-4-ink: #ffffff;
+  --seq-5-ink: #ffffff;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --surface-1: #fcfcfb;
+    --plane: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --gridline: #e1e0d9;
+    --baseline: #c3c2b7;
+    --accent: #2a78d6;
+    --accent-dim: #86b6ef;
+    --success: #006300;
+    --border: rgba(11, 11, 11, 0.1);
+    --border-strong: rgba(11, 11, 11, 0.32);
+
+    --seq-0: var(--surface-1);
+    --seq-1: #cde2fb;
+    --seq-2: #9ec5f4;
+    --seq-3: #6da7ec;
+    --seq-4: #3987e5;
+    --seq-5: #1c5cab;
+
+    --seq-0-ink: var(--text-muted);
+    --seq-1-ink: var(--text-primary);
+    --seq-2-ink: var(--text-primary);
+    --seq-3-ink: var(--text-primary);
+    --seq-4-ink: #ffffff;
+    --seq-5-ink: #ffffff;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button,
+input {
+  font-family: inherit;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
