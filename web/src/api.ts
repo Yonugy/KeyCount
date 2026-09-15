@@ -191,6 +191,11 @@ export interface LeaderboardEntry {
 
 export type LeaderboardWindow = "daily" | "weekly" | "alltime";
 
+// "friends" scope added 2026-09-11 alongside the friendships feature
+// (FriendsView.tsx) -- see leaderboards.go's own note on what it
+// includes (you plus your accepted friends).
+export type LeaderboardScope = "global" | "friends";
+
 export interface Settings {
   username: string;
   public_profile: boolean;
@@ -209,6 +214,21 @@ export interface PublicProfile {
   total_keystrokes: number;
   current_streak: number;
   longest_streak: number;
+}
+
+// Friendships (2026-09-11, request/accept model -- see backend/friends.go).
+// Same shape used for an accepted friend, an incoming request, and an
+// outgoing request -- which list it's in is what distinguishes them, the
+// entry itself doesn't carry a status field.
+export interface FriendEntry {
+  username: string;
+  public_profile: boolean;
+}
+
+export interface FriendsList {
+  friends: FriendEntry[];
+  incoming_requests: FriendEntry[];
+  outgoing_requests: FriendEntry[];
 }
 
 // --- calls -----------------------------------------------------------
@@ -261,12 +281,12 @@ export function fetchDayApps(sinceTs: number, untilTs: number) {
   return request<AppStat[]>(`/v1/me/day-apps?since=${sinceTs}&until=${untilTs}`);
 }
 
-export function fetchLeaderboardKeystrokes(window: LeaderboardWindow) {
-  return request<LeaderboardEntry[]>(`/v1/leaderboards/keystrokes?window=${window}`);
+export function fetchLeaderboardKeystrokes(window: LeaderboardWindow, scope: LeaderboardScope = "global") {
+  return request<LeaderboardEntry[]>(`/v1/leaderboards/keystrokes?window=${window}&scope=${scope}`);
 }
 
-export function fetchLeaderboardStreak() {
-  return request<LeaderboardEntry[]>("/v1/leaderboards/streak");
+export function fetchLeaderboardStreak(scope: LeaderboardScope = "global") {
+  return request<LeaderboardEntry[]>(`/v1/leaderboards/streak?scope=${scope}`);
 }
 
 export function fetchSettings() {
@@ -286,4 +306,37 @@ export function updatePublicProfile(publicProfile: boolean) {
 // comment: that's the entire point of a "public" profile page).
 export function fetchPublicProfile(username: string) {
   return request<PublicProfile>(`/v1/users/${encodeURIComponent(username)}/public-profile`);
+}
+
+export function fetchFriends() {
+  return request<FriendsList>("/v1/friends");
+}
+
+export function sendFriendRequest(username: string) {
+  return request<{ status: string }>("/v1/friends/request", {
+    method: "POST",
+    body: JSON.stringify({ username }),
+  });
+}
+
+// Also used to cancel a request YOU sent -- the backend's decline
+// endpoint works from either side of a pending request, see its own
+// comment. FriendsView.tsx calls this same function for both the
+// addressee's "Decline" button and the requester's "Cancel" button.
+export function declineFriendRequest(username: string) {
+  return request<{ status: string }>(`/v1/friends/${encodeURIComponent(username)}/decline`, {
+    method: "POST",
+  });
+}
+
+export function acceptFriendRequest(username: string) {
+  return request<{ status: string }>(`/v1/friends/${encodeURIComponent(username)}/accept`, {
+    method: "POST",
+  });
+}
+
+export function removeFriend(username: string) {
+  return request<{ status: string }>(`/v1/friends/${encodeURIComponent(username)}`, {
+    method: "DELETE",
+  });
 }

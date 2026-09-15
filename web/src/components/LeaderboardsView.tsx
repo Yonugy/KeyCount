@@ -6,6 +6,7 @@ import {
   getUsername,
   type LeaderboardEntry,
   type LeaderboardWindow,
+  type LeaderboardScope,
 } from "../api";
 import RefreshStatus from "./RefreshStatus";
 
@@ -37,11 +38,17 @@ const REFETCH_MS = 30_000;
 export default function LeaderboardsView() {
   const [metric, setMetric] = useState<Metric>("keystrokes");
   const [window, setWindowValue] = useState<LeaderboardWindow>("daily");
+  // Global/Friends scope toggle (2026-09-11, alongside the friendships
+  // feature -- see FriendsView.tsx for the actual add/accept/manage UI,
+  // this tab only gets the toggle). Friends management deliberately
+  // doesn't live here, so there's nothing more than this one control to
+  // add on top of what already existed.
+  const [scope, setScope] = useState<LeaderboardScope>("global");
   const myUsername = getUsername();
 
   const query = useQuery({
-    queryKey: metric === "keystrokes" ? ["leaderboard", "keystrokes", window] : ["leaderboard", "streak"],
-    queryFn: () => (metric === "keystrokes" ? fetchLeaderboardKeystrokes(window) : fetchLeaderboardStreak()),
+    queryKey: metric === "keystrokes" ? ["leaderboard", "keystrokes", window, scope] : ["leaderboard", "streak", scope],
+    queryFn: () => (metric === "keystrokes" ? fetchLeaderboardKeystrokes(window, scope) : fetchLeaderboardStreak(scope)),
     refetchInterval: REFETCH_MS,
   });
 
@@ -84,6 +91,35 @@ export default function LeaderboardsView() {
           isFetching={query.isFetching}
           onRefresh={() => query.refetch()}
         />
+      </div>
+
+      <div style={{ display: "flex", gap: 6 }}>
+        {(
+          [
+            { value: "global", label: "Global" },
+            { value: "friends", label: "Friends" },
+          ] as { value: LeaderboardScope; label: string }[]
+        ).map((s) => {
+          const active = s.value === scope;
+          return (
+            <button
+              key={s.value}
+              onClick={() => setScope(s.value)}
+              style={{
+                background: active ? "var(--surface-1)" : "none",
+                color: active ? "var(--text-primary)" : "var(--text-muted)",
+                border: "1px solid " + (active ? "var(--border)" : "transparent"),
+                borderRadius: 6,
+                padding: "5px 10px",
+                fontSize: 13,
+                fontWeight: active ? 600 : 400,
+                cursor: "pointer",
+              }}
+            >
+              {s.label}
+            </button>
+          );
+        })}
       </div>
 
       {metric === "keystrokes" && (

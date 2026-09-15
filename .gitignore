@@ -1,2 +1,9 @@
 keycount.db
 keycount.db.backup-*
+__pycache__/
+*.pyc
+
+# PyInstaller build output (agent.py -> keycount-agent binary), see
+# keycount-agent.spec and .github/workflows/release.yml
+build/
+dist/

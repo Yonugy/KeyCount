@@ -4,7 +4,10 @@ import "database/sql"
 
 // schema matches the core tables from architecture/keycount-system-design.md
 // section 4.4, adjusted for what Phase 2 (auth + ingest + stats) needs.
-// friendships (Phase 4) is intentionally not created yet.
+// friendships was intentionally left uncreated through Phase 4's initial
+// leaderboards work (global-only, scope decision documented in
+// leaderboards.go) -- added 2026-09-11 once friends-only leaderboards
+// were actually requested. See friends.go for the request/accept flow.
 const schema = `
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
@@ -71,6 +74,32 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     expires_at TIMESTAMPTZ NOT NULL,
     revoked_at TIMESTAMPTZ
 );
+
+-- Request/accept model (2026-09-11, direct request), one row per request
+-- regardless of who sent it: requester_id sends to addressee_id, status
+-- starts 'pending', and moves to 'accepted' in place (never a second
+-- row) once addressee_id accepts -- see friends.go for why a single row
+-- flipped in place, rather than a mirrored second row, was simpler to
+-- keep consistent. A declined or cancelled request just deletes the row
+-- rather than leaving a 'declined' tombstone -- there's nothing useful
+-- to show from "X declined Y once," and it lets the same pair request
+-- each other again later without a stale row in the way. The unordered
+-- CHECK below stops the same pair from ending up with two rows in
+-- opposite directions (A->B and B->A) representing what's really one
+-- relationship -- friends.go's lookups always check both directions
+-- explicitly instead of relying on which side happens to be
+-- requester_id.
+CREATE TABLE IF NOT EXISTS friendships (
+    requester_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    addressee_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    responded_at TIMESTAMPTZ,
+    PRIMARY KEY (requester_id, addressee_id),
+    CHECK (requester_id <> addressee_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS friendships_unordered_pair
+    ON friendships (LEAST(requester_id, addressee_id), GREATEST(requester_id, addressee_id));
 `
 
 // RunMigrations applies the schema. It's plain idempotent DDL (CREATE TABLE

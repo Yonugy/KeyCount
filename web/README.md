@@ -419,16 +419,24 @@ selected day survives a switch from List to Keyboard mode rather than
 quietly resetting, and that the app dropdown and day switcher combine
 correctly rather than one silently overriding the other.
 
-**Leaderboards** (`LeaderboardsView.tsx`, added 2026-09-02) — global
-rankings, every registered user, no friends-only gating (see the backend
-README's own note on that scope decision -- there's no friendships table
-in this schema). Two metrics as sub-tabs: Keystrokes (with a Today / This
-week / All time window selector) and Longest streak (all-time best, no
-window -- a streak's "window" is inherently its own history). Your own
-row is highlighted and labeled "(you)" if you're on the board. A
+**Leaderboards** (`LeaderboardsView.tsx`, added 2026-09-02) — rankings
+with a Global / Friends scope toggle (friends-only added 2026-09-11, see
+that dated section below -- Global was the only option before then). Two
+metrics as sub-tabs: Keystrokes (with a Today / This week / All time
+window selector) and Longest streak (all-time best, no window -- a
+streak's "window" is inherently its own history). Your own row is
+highlighted and labeled "(you)" if you're on the board. A
 `public_profile` entry's username links to `/u/<username>` (a real
 `<a href>`, not client routing -- see `App.tsx`'s note on why); an entry
 without a public profile renders as plain, unlinked text.
+
+**Friends** (`FriendsView.tsx`, added 2026-09-11) — a standalone
+top-level tab (not folded into Leaderboards) for the whole request/accept
+lifecycle: search-by-username to send a request, "Requests waiting on
+you" (Accept / Decline) and "Requests you sent" (Cancel), and your
+current friends list (Remove). One `["friends"]` React Query key backs
+all three lists; every mutation just invalidates it rather than
+hand-patching each list in place -- see the dated section below.
 
 **Settings** (`SettingsView.tsx`, added 2026-09-02) — currently just the
 public-profile opt-in toggle (off by default, matching the backend's own
@@ -673,8 +681,159 @@ Frontend-only, no backend change -- `/v1/me/stats` wasn't involved in
 this calculation at all, it's purely `DayView.tsx`'s own client-side
 math over the 90-day history fetch it already had.
 
+## 2026-09-11: friendships and a friends-only leaderboard scope
+
+Request/accept friendships (`FriendsView.tsx`, new top-level tab -- a
+direct choice over folding this into Leaderboards, so the management UI
+doesn't crowd a view that's about rankings, not relationships). Add a
+friend by username, accept/decline incoming requests, cancel outgoing
+ones, remove an existing friend -- see `api.ts`'s new
+`fetchFriends`/`sendFriendRequest`/`acceptFriendRequest`/
+`declineFriendRequest` (also doubles as cancel)/`removeFriend` calls and
+the backend README's matching dated note for the API side.
+
+One `["friends"]` React Query key backs all three lists (friends,
+incoming, outgoing); every mutation (`sendMutation`, `acceptMutation`,
+`declineMutation`, `removeMutation`) just calls
+`invalidateQueries({queryKey: ["friends"]})` on success rather than
+hand-patching each list -- this tab isn't expected to see enough traffic
+for the extra round trip to matter, and it's a lot less code to get wrong
+than reproducing the backend's request/accept/decline logic three times
+on the client.
+
+`LeaderboardsView.tsx` gained a Global/Friends scope toggle (new
+`LeaderboardScope` type in `api.ts`, `scope` param on both leaderboard
+fetch functions) sitting between the metric selector and the window
+selector. Friends scope always includes you alongside your friends, so
+you can see your own rank even on a friends-only board with just one
+friend on it.
+
+Tested with a clean `tsc`/`npm run build` and an 8-check Playwright run
+using two separate browser contexts (genuinely separate signed-in
+sessions, not one page juggling two accounts) to drive the full
+request -> accept -> friends-scoped-leaderboard flow end to end.
+
+## 2026-09-13: routing phase 1 -- a real router, no new pages yet
+
+First step of a bigger plan (public landing/features/download pages in
+front of the dashboard, see the project's own notes on that): added
+`react-router-dom` and split what used to be one big `App.tsx` -- login
+gate, header, tab nav, all seven views, plus a hand-rolled regex check
+for `/u/:username` -- into real routes. Deliberately scoped to change
+nothing a visitor can see yet, just to get the plumbing right before
+building anything new on top of it.
+
+`Dashboard.tsx` now holds the signed-in shell (header, tab nav, the seven
+views), moved out of `App.tsx` unchanged. `RequireAuth.tsx` guards
+`/app`, redirecting to `/login` when there's no token -- this is the one
+place that decision gets made now, replacing the old top-of-`App.tsx`
+"if (!token) show Login" check. `LoginRoute.tsx` wraps `Login.tsx`
+(itself untouched) with navigation: on success it goes to `/app`, or
+back to wherever `RequireAuth` originally redirected from, via router
+state. `/u/:username` is a real route now, reading `useParams` instead
+of matching `window.location.pathname` against a regex by hand.
+
+`/` is a placeholder for now, `RootRedirect` sends a signed-in visitor to
+`/app` and everyone else to `/login` -- the exact behavior the old
+gate had, just expressed as a redirect. That placeholder is what the
+actual landing page replaces in the next phase.
+
+Tested with a 19-check Playwright run: signed-out visits to `/` and
+`/app` both land on `/login`, all seven tabs still work after signing
+in, visiting `/login` while already signed in bounces back to `/app`,
+an unknown path doesn't dead-end, sign-out re-guards `/app`, and
+`/u/:username` still works for both a real public profile and a
+nonexistent one, including a hard refresh on each route (Vite's SPA
+fallback still serves `index.html` for all of them, same as before).
+
+No backend change, no `.env` change -- this is entirely a `web/`
+restructure.
+
+## 2026-09-13: routing phase 2 -- landing, features, and download pages
+
+Second step of the plan phase 1 set up for. "/" is the real landing page
+now, replacing phase 1's RootRedirect placeholder -- it renders for
+every visitor, signed in or not. A signed-in visitor doesn't get
+redirected away from it; PublicNav and the hero both show a "go to your
+dashboard" link instead. `/features` and `/download` are new public
+pages alongside it, all three sharing a new `PublicNav.tsx`.
+
+Content on `/features` is pulled from the root README and the design
+doc, not invented -- tracking behavior, dashboard views, the social
+features, and the privacy posture, grouped the same way this README
+already describes them.
+
+`/download` is deliberately honest rather than aspirational: there are
+no packaged installers yet, that's a later phase (PyInstaller builds +
+a GitHub Actions release workflow). Until then it's a "run from source"
+quick start per OS (macOS and Windows), sourced from the root README's
+own requirements section. The Windows tab also flags plainly that
+per-app detection is macOS-only for now, keystroke/click counting works
+fully on Windows already, the per-app breakdown doesn't yet.
+
+One layout bug caught during testing, not by inspection: `PublicNav`'s
+`<nav>` sits inside a `display: flex; flexDirection: column` wrapper on
+the landing page (not on `/features` or `/download`, which don't wrap it
+in a flex container), and a flex item with `margin: auto` set on the
+cross axis loses the default stretch-to-fill behavior, shrinking to
+content width instead of reaching its `maxWidth: 1100` cap. Fixed with
+an explicit `width: "100%"` on the nav so it actually stretches before
+`margin: auto` centers it, same fix pattern as any other centered-column
+component in this app that happens to live inside a flex parent.
+
+Tested with a 19-check Playwright run: the landing page renders (not a
+redirect) for both signed-out and signed-in visitors, the nav's Sign
+in/Go to dashboard link reflects auth state correctly, Features and
+Download both load with their expected content, the Windows tab shows
+the per-app caveat and hides the macOS-only pyobjc step, sign-in still
+lands on `/app`, and sign-out now lands on the real `/` landing page
+instead of jumping straight to `/login` (an intentional behavior change
+from phase 1, where `/` was still just a redirect placeholder).
+
+No backend change, no `.env` change -- this is entirely a `web/`
+restructure, same as phase 1.
+
+## 2026-09-14: Download page follows agent.py's Windows support
+
+Phase 3 of the plan landed on the agent side (`agent.py`'s
+`get_foreground_app` gained a Windows branch via `pywin32` -- see the
+root README's own note). This is the small matching update on the web
+side: `/download`'s Windows tab no longer carries the "per-app detection
+is macOS-only" caveat it shipped with in phase 2, and its "run from
+source" steps now mirror the macOS tab's exactly, `pip install pywin32`
+in place of `pip install pyobjc-framework-Quartz`, both marked optional
+the same way.
+
+No routing change, no new page, just `DownloadPage.tsx` catching up to
+what the agent can actually do now. Re-ran the phase 2 Playwright suite
+with its two Windows-tab checks updated to match (caveat gone, pywin32
+step present instead of the macOS one) -- all 19 checks still pass.
+
+## 2026-09-14: packaged downloads -- PyInstaller + a GitHub Actions release workflow
+
+Phase 4 of the project plan: `/download`'s buttons are real now. Each OS
+tab links to
+`https://github.com/Yonugy/KeyCount/releases/latest/download/<asset>`,
+GitHub's URL that always resolves to whatever the newest release
+publishes -- built by `.github/workflows/release.yml` (macOS + Windows
+PyInstaller builds via `keycount-agent.spec`, triggered by pushing a
+`v*` tag) and updated automatically each time a new tag ships, no
+`DownloadPage.tsx` change required per release.
+
+The "run from source" instructions stay underneath as a secondary path
+-- both for people who'd rather not run someone else's unsigned binary,
+and as the only thing that works before a first release has ever been
+tagged (the release-asset links 404 until then; the page's own caveat
+text says so).
+
+Re-ran the phase 2 Playwright suite (still 19/19, one selector updated
+for the new "Prefer to run from source?" heading text) plus 10 new
+checks for the download links/asset names/caveat copy -- all pass.
+
 ## Next
 
-Friendships (if wanted later — the leaderboards' global-only scope was a
-deliberate choice this phase, not a stepping stone), and whatever else
-`../ROADMAP.md` calls out next.
+Cut the first real release (`git tag v0.1.0 && git push origin v0.1.0`)
+to actually populate `/download`'s buttons -- until a release exists,
+they 404 and visitors fall through to "run from source". After that,
+phase 5 (the space-background/animated-button visual pass) from the
+project plan, or whatever `../ROADMAP.md` calls out next.

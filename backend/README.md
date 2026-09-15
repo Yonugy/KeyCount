@@ -23,9 +23,14 @@ password hashing, and `golang-jwt/jwt/v5` for login tokens.
 | POST | `/v1/auth/refresh`            | none (refresh token in body) | Rotates a refresh token: revokes it and returns a fresh (access, refresh) pair. Added 2026-09-02, see the dated section below. |
 | GET  | `/v1/me/settings`             | user JWT           | Returns `{username, public_profile, member_since}`. `member_since` was added so the frontend's authenticated Profile tab always has it, regardless of `public_profile` -- see the dated section below. |
 | PATCH | `/v1/me/settings`            | user JWT           | Body `{public_profile: bool}` -- toggles the opt-in public profile page. |
-| GET  | `/v1/leaderboards/keystrokes?window=` | user JWT   | Global top 50 by total keystrokes. `window` is `daily` / `weekly` / `alltime`, defaults to `daily`. Users with zero activity in the window are omitted. |
-| GET  | `/v1/leaderboards/streak`     | user JWT           | Global top 50 by all-time longest streak (not current streak). |
+| GET  | `/v1/leaderboards/keystrokes?window=&scope=` | user JWT | Top 50 by total keystrokes. `window` is `daily` / `weekly` / `alltime`, defaults to `daily`. `scope` is `global` (default) or `friends` (you + your accepted friends only), added 2026-09-11. Users with zero activity in the window are omitted. |
+| GET  | `/v1/leaderboards/streak?scope=` | user JWT       | Top 50 by all-time longest streak (not current streak). `scope` is `global` (default) or `friends`, added 2026-09-11. |
 | GET  | `/v1/users/{username}/public-profile` | none       | No auth required -- the point of a shareable link. 404s identically for a nonexistent username and an existing-but-private one. |
+| GET  | `/v1/friends`                 | user JWT           | Returns `{friends, incoming_requests, outgoing_requests}` -- see the 2026-09-11 dated section below. |
+| POST | `/v1/friends/request`         | user JWT           | Body `{username}` -- sends a friend request. 409s on self, duplicate, already-friends, or a reverse pending request. |
+| POST | `/v1/friends/{username}/accept` | user JWT         | Accepts an incoming request. |
+| POST | `/v1/friends/{username}/decline` | user JWT        | Declines an incoming request, or cancels one you sent -- works from either side. |
+| DELETE | `/v1/friends/{username}`    | user JWT           | Removes an existing friendship. |
 
 Two separate token types on purpose: your browser/CLI logs in as a *user*
 (JWT), but each installed agent authenticates ingest calls with its own
@@ -54,7 +59,8 @@ Everything below is created automatically the first time you run the
 server (`RunMigrations` in `db.go` runs `CREATE TABLE IF NOT EXISTS` for
 each of these on startup) -- there's no separate migration step. This is
 based on section 4.4 of the system design doc, trimmed to what auth +
-ingest + stats actually need (no `friendships` yet -- that's Phase 4).
+ingest + stats actually need. A `friendships` table was added
+2026-09-11 -- see the dated section below.
 
 Five tables:
 
@@ -152,6 +158,25 @@ below) -- one row per issued refresh token.
 | `expires_at` | timestamp | 30 days after issuance |
 | `revoked_at` | timestamp, nullable | set the moment this token is used (rotation) or could be set by a future explicit "sign out other devices" endpoint -- not built yet |
 
+### `friendships`
+Added 2026-09-11. One row per friend pair, not two -- see the dated
+section further down for why.
+
+| column | type | meaning |
+|---|---|---|
+| `requester_id` | integer | who sent the request (points at `users.id`) |
+| `addressee_id` | integer | who received it |
+| `status` | text | `pending` or `accepted` -- flipped in place on accept, never a second row |
+| `created_at` | timestamp | when the request was sent |
+| `responded_at` | timestamp, nullable | when it was accepted (still null while pending) |
+
+Primary key is `(requester_id, addressee_id)`, and a functional unique
+index on `(LEAST(requester_id, addressee_id), GREATEST(requester_id,
+addressee_id))` stops the same pair from having rows in both directions
+at once. A `CHECK (requester_id <> addressee_id)` blocks self-friending
+at the DB level. Declining or unfriending deletes the row outright --
+no tombstone -- so the same pair can request again later.
+
 ### How a row actually gets written where
 
 1. `agent.py` syncs a bucket -> `POST /v1/ingest/batch` -> a new row in
@@ -246,11 +271,11 @@ strangers' requests are in the mix:
   (compromised device token, buggy retry loop) rather than police normal
   usage. Keyed per-device, so one compromised/misbehaving device doesn't
   affect your other devices.
-- **Global leaderboards** (`leaderboards.go`) -- `GET
+- **Leaderboards** (`leaderboards.go`) -- `GET
   /v1/leaderboards/keystrokes?window=daily|weekly|alltime` and `GET
-  /v1/leaderboards/streak`, top 50, descending. Deliberately global (every
-  registered user), not friends-only -- there's no friendships table in
-  this schema, and adding one was explicitly out of scope for this phase.
+  /v1/leaderboards/streak`, top 50, descending. Global by default; both
+  endpoints also take `scope=friends` as of 2026-09-11 (you + your
+  accepted friends only) -- see that dated section below.
   Users with zero activity in the window are excluded rather than shown
   at the bottom with a zero. Ranked by `longest_streak` (best ever), not
   current streak, on the streak board -- rewards all-time consistency
@@ -369,10 +394,6 @@ during development, not just compiled.
 - **`key_counts`** from the agent's local per-key tracking — intentionally
   never sent here, and never will be. See `../ROADMAP.md` and the PRIVACY
   NOTE at the top of `agent.py`.
-- **Friendships / friends-only leaderboards.** The 2026-09-02 leaderboards
-  are global-only by deliberate scope decision -- see the dated section
-  below. A friendships table (design doc section 4.4) would be a separate,
-  later addition, not a variant of what's here.
 - **Multi-instance rate limiting.** The ingest limiter (`ratelimit.go`) is
   in-memory per process -- fine for a single instance, but would
   under/over-count across a load-balanced deployment. Nothing in this repo
@@ -401,6 +422,32 @@ fields show up (current_streak off Week/Month/All-time entirely, onto
 the Day view instead; longest_streak dropped from Week/Month, kept only
 on All-time) -- no backend change for that part, see the web README's
 matching note.
+
+### 2026-09-11: friendships and friends-only leaderboards
+
+Request/accept friendships (design doc section 4.4, previously deferred
+-- see the now-removed out-of-scope bullet above). One `friendships` row
+per pair, flipped from `pending` to `accepted` in place rather than
+mirrored into a second row -- see the `friendships` table doc above for
+the exact constraints that keep a pair from ending up in both states at
+once.
+
+New file `friends.go`: `handleSendFriendRequest`, `handleAcceptFriendRequest`,
+`handleDeclineFriendRequest` (doubles as "cancel" for the requester --
+same 409/404 semantics either direction), `handleRemoveFriend`, and
+`handleListFriends` (three queries: friends, incoming requests, outgoing
+requests). New routes are in the endpoint table above.
+
+Both leaderboard endpoints gained a `scope` query param (`global`, the
+default, or `friends`) via a shared `friendsScopeClause` SQL helper --
+`friends` scope always includes the viewer themselves alongside their
+accepted friends, so you can see your own rank on a friends-only board
+even with just one friend.
+
+Tested with a 27-check functional suite against a real local Postgres +
+this real compiled Go binary (request/accept/decline/unfriend and both
+leaderboard endpoints' scope filtering), plus a two-browser-context
+Playwright run against the real frontend (see `../web/README.md`).
 
 ## Next: wire the agent to this
 

@@ -14,6 +14,12 @@ import (
 // default majority of entries missing wouldn't be much of a leaderboard.
 // If a future phase wants opt-out-of-ranking too, that's a second,
 // separate flag from public_profile, not a repurposing of it.
+//
+// scope=friends (2026-09-11, direct request, once friendships -- see
+// friends.go -- actually existed to scope by) always includes the
+// viewer themselves alongside their accepted friends, same as every
+// other "friends leaderboard" convention -- otherwise you'd be looking
+// at a ranking you can't see your own position on.
 
 type leaderboardEntry struct {
 	Rank          int    `json:"rank"`
@@ -46,6 +52,36 @@ func leaderboardWindowStart(window string) (time.Time, error) {
 	}
 }
 
+// parseLeaderboardScope validates the scope query param -- see this
+// file's own top-of-file note on what "friends" includes.
+func parseLeaderboardScope(scope string) (string, error) {
+	switch scope {
+	case "", "global":
+		return "global", nil
+	case "friends":
+		return "friends", nil
+	default:
+		return "", fmt.Errorf("scope must be one of: global, friends")
+	}
+}
+
+// friendsScopeClause is shared by both leaderboard queries below --
+// true when scope is "global" (no filtering), or when the row's user IS
+// the viewer, or when an accepted friendships row connects them either
+// direction. $-placeholders are numbered from startAt since each query
+// already has its own earlier params (window date, limit) ahead of this
+// clause.
+func friendsScopeClause(startAt int) string {
+	return fmt.Sprintf(
+		`($%d = 'global' OR u.id = $%d OR EXISTS (
+			SELECT 1 FROM friendships f
+			WHERE f.status = 'accepted'
+			  AND ((f.requester_id = $%d AND f.addressee_id = u.id) OR (f.requester_id = u.id AND f.addressee_id = $%d))
+		))`,
+		startAt, startAt+1, startAt+1, startAt+1,
+	)
+}
+
 // handleLeaderboardKeystrokes serves
 // GET /v1/leaderboards/keystrokes?window=daily|weekly|alltime -- ranked by
 // total keystrokes summed from daily_rollups over the window, top 50,
@@ -58,16 +94,23 @@ func (s *Server) handleLeaderboardKeystrokes(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	scope, err := parseLeaderboardScope(r.URL.Query().Get("scope"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	userID := r.Context().Value(userIDKey).(int64)
 
 	rows, err := s.DB.QueryContext(r.Context(),
 		`SELECT u.username, u.public_profile, COALESCE(SUM(dr.total_keystrokes), 0) AS total
 		 FROM users u
 		 JOIN daily_rollups dr ON dr.user_id = u.id AND dr.date >= $1
+		 WHERE `+friendsScopeClause(3)+`
 		 GROUP BY u.id, u.username, u.public_profile
 		 HAVING COALESCE(SUM(dr.total_keystrokes), 0) > 0
 		 ORDER BY total DESC
 		 LIMIT $2`,
-		since.Format("2006-01-02"), leaderboardLimit,
+		since.Format("2006-01-02"), leaderboardLimit, scope, userID,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load leaderboard")
@@ -102,13 +145,20 @@ func (s *Server) handleLeaderboardKeystrokes(w http.ResponseWriter, r *http.Requ
 // param: a streak's "window" is inherently its own history, there's no
 // daily/weekly cut of it that means anything.
 func (s *Server) handleLeaderboardStreak(w http.ResponseWriter, r *http.Request) {
+	scope, err := parseLeaderboardScope(r.URL.Query().Get("scope"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	userID := r.Context().Value(userIDKey).(int64)
+
 	rows, err := s.DB.QueryContext(r.Context(),
 		`SELECT u.username, u.public_profile, st.longest_streak
 		 FROM streaks st JOIN users u ON u.id = st.user_id
-		 WHERE st.longest_streak > 0
+		 WHERE st.longest_streak > 0 AND `+friendsScopeClause(2)+`
 		 ORDER BY st.longest_streak DESC
 		 LIMIT $1`,
-		leaderboardLimit,
+		leaderboardLimit, scope, userID,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load leaderboard")

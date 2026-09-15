@@ -90,13 +90,31 @@ work, and open the dashboard whenever you want to look at it.
 - Buckets events per minute into a local SQLite DB (`keycount.db`).
 - Detects idle periods (default 60s of no input) and opens/closes
   `sessions` rows accordingly.
-- Best-effort foreground-app detection on macOS (via `pyobjc`/Quartz --
+- Best-effort foreground-app detection: macOS via `pyobjc`/Quartz --
   queries the window server directly rather than AppKit's
   `NSWorkspace.frontmostApplication`, which needs an active Cocoa run
   loop to stay up to date and this script doesn't run one; an earlier
   version used that and it froze on whichever app was frontmost around
-  startup), falls back to `"unknown"` elsewhere.
+  startup. Windows via `pywin32` (added 2026-09-14), resolving the
+  foreground window's owning process to its executable name. Falls back
+  to `"unknown"` on Linux, or on either OS above if the optional
+  dependency isn't installed -- keystroke/click counting works fine
+  either way, this only affects the per-app breakdown.
 - Prints a live "today" keystroke/click count to the terminal every 5s.
+
+## Get a packaged build
+
+Prebuilt macOS and Windows binaries are published on the
+[GitHub Releases page](https://github.com/Yonugy/KeyCount/releases), and
+linked from the website's `/download` page
+(`web/src/components/DownloadPage.tsx`). Built by
+`.github/workflows/release.yml` from `keycount-agent.spec` (PyInstaller)
+whenever a `v*` tag is pushed -- no Python install needed, just download
+and run. They're unsigned/not notarized, so your OS will warn before
+opening one the first time.
+
+No packaged Linux build -- running from source (below) is the only path
+there for now.
 
 ## Requirements
 
@@ -104,6 +122,8 @@ work, and open the dashboard whenever you want to look at it.
 - macOS, for per-app detection: `pip install pyobjc-framework-Quartz`
   (skip it and app detection just always reports `"unknown"` -- keystroke/
   click counting still works fine without it)
+- Windows, for per-app detection: `pip install pywin32` (same deal --
+  optional, skip it and apps just show as `"unknown"`)
 - Go 1.22+ and Postgres (for the backend — see `backend/README.md`)
 - Node 18+ (for the dashboard — see `web/README.md`)
 - macOS: the agent's first run will prompt for **Accessibility** and/or
@@ -128,8 +148,6 @@ before exiting).
   the whole agent to the Tauri/Rust stack the design doc recommends for
   cross-platform).
 - Add the excluded-apps list and a pause toggle.
-- Phase 4: friendships, opt-in public profiles, leaderboards — see
-  `ROADMAP.md`.
 
 ## Per-key stats (local-only, opt-in)
 

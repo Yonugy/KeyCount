@@ -1,0 +1,78 @@
+name: Release agent binaries
+
+# Builds the KeyCount agent (agent.py) into a standalone binary for macOS
+# and Windows and attaches both to a GitHub Release, triggered by pushing
+# a version tag:
+#
+#   git tag v0.1.0
+#   git push origin v0.1.0
+#
+# See keycount-agent.spec (repo root) for the PyInstaller build itself,
+# and its own comments for why it's a .spec file with explicit hidden
+# imports rather than a bare `pyinstaller --onefile agent.py`.
+#
+# DownloadPage.tsx points its download buttons at
+# https://github.com/Yonugy/KeyCount/releases/latest/download/<asset
+# name>, which GitHub always resolves to whatever release is currently
+# marked "latest" -- so pushing a new tag is what updates what those
+# buttons hand out. No web-side code change needed per release.
+#
+# No Linux job here on purpose: there's no packaged Linux download
+# (DownloadPage.tsx only has macOS/Windows tabs), "run from source"
+# stays the only path there.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            asset_name: keycount-agent-mac.zip
+            binary_name: keycount-agent
+            # Optional in the "run from source" instructions (per-app
+            # detection degrades to "unknown" without it) but there's no
+            # reason a packaged download should make someone install it
+            # separately, so the release build always includes it.
+            extra_dep: pyobjc-framework-Quartz
+          - os: windows-latest
+            asset_name: keycount-agent-windows.zip
+            binary_name: keycount-agent.exe
+            extra_dep: pywin32
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pynput ${{ matrix.extra_dep }} pyinstaller
+
+      - name: Build binary
+        run: pyinstaller keycount-agent.spec --noconfirm
+
+      # zip, not the raw binary: keeps the executable bit intact through
+      # download/browser handling on macOS, and gives both platforms one
+      # consistent asset shape.
+      - name: Zip the binary (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cd dist
+          zip "../${{ matrix.asset_name }}" "${{ matrix.binary_name }}"
+
+      - name: Zip the binary (Windows)
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path "dist/${{ matrix.binary_name }}" -DestinationPath "${{ matrix.asset_name }}"
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset_name }}

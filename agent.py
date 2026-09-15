@@ -30,6 +30,7 @@ random access token. See the "Per-key stats" section in README.md.
 import argparse
 import getpass
 import json
+import ntpath
 import platform
 import re
 import secrets
@@ -63,12 +64,28 @@ APP_SAMPLE_MIN_INTERVAL_S = 0.1  # per-key app sampling throttle -- see Agent._s
 LOCAL_API_PORT = 8787          # dashboard's "Keys" tab talks to this, localhost-only
 
 
-# --- foreground app detection (best-effort, macOS via pyobjc) ---------
+# --- foreground app detection (best-effort: macOS via pyobjc, Windows
+# via pywin32, added 2026-09-14 -- falls back to "unknown" everywhere
+# else, e.g. Linux, same as it always has for a platform with no branch
+# here yet) -------------------------------------------------------------
 
 def get_foreground_app() -> str:
-    """Which app currently has focus, best-effort.
+    """Which app currently has focus, best-effort. Dispatches to a
+    per-OS helper below -- see each one's own docstring for the
+    platform-specific mechanics. A platform with no branch here (Linux,
+    for now) just gets "unknown", the same fallback both branches
+    themselves use if their own OS-specific call fails for any reason
+    (missing optional dependency, permissions, anything else).
+    """
+    if sys.platform == "darwin":
+        return _foreground_app_macos()
+    if sys.platform == "win32":
+        return _foreground_app_windows()
+    return "unknown"
 
-    Deliberately NOT NSWorkspace.frontmostApplication() (an earlier
+
+def _foreground_app_macos() -> str:
+    """Deliberately NOT NSWorkspace.frontmostApplication() (an earlier
     version used that) -- that property is kept fresh by macOS sending
     app-activation notifications, which requires an active Cocoa run loop
     to receive. This script never runs one (it's a plain `while: sleep`
@@ -81,6 +98,10 @@ def get_foreground_app() -> str:
     one-shot query with no caching to go stale: walk the on-screen window
     list (already frontmost-to-backmost order) and take the owner of the
     first real app window (layer 0 -- skips the menu bar, Dock, etc).
+
+    Requires pyobjc-framework-Quartz (`pip install pyobjc-framework-
+    Quartz`) -- optional: keystroke/click counting works fine without
+    it, this just returns "unknown" if the import fails.
     """
     try:
         import Quartz
@@ -92,6 +113,70 @@ def get_foreground_app() -> str:
             if w.get("kCGWindowLayer", -1) == 0:
                 return w.get("kCGWindowOwnerName") or "unknown"
         return "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _foreground_app_windows() -> str:
+    """Added 2026-09-14 -- this used to be macOS-only (see the web app's
+    Download page, which documented that gap until this shipped).
+
+    GetForegroundWindow() is a synchronous, always-current query, the
+    same "no caching to go stale" property the macOS Quartz path above
+    relies on, just via the Win32 API instead of the window server:
+    the HWND currently holding input focus, its owning process id via
+    GetWindowThreadProcessId, then that process's own executable path
+    resolved through OpenProcess + GetModuleFileNameEx. Only the file's
+    base name is kept, without the .exe extension, to read the same way
+    macOS's app names do -- "chrome", not the full
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" path.
+
+    Requires pywin32 (`pip install pywin32`) -- optional, same deal as
+    pyobjc-framework-Quartz on macOS: keystroke/click counting works
+    fine without it, this just returns "unknown" if the import or any
+    step of the lookup fails.
+
+    Uses `ntpath.basename` rather than `os.path.basename` on purpose --
+    this always parses a Windows-style backslash path (that's what
+    GetModuleFileNameEx returns), regardless of which OS the interpreter
+    itself is running on, `os.path` only behaves that way when the
+    interpreter is actually on Windows. Since this function only ever
+    runs from the `sys.platform == "win32"` branch above, the two are
+    equivalent in real use, but the explicit `ntpath` import is what let
+    this get a real logic test (mocked win32 modules, real path parsing)
+    in this project's Linux sandbox rather than just an import-error
+    fallback check.
+
+    Written against the documented Win32 API and exercised that way --
+    mocked win32api/win32con/win32gui/win32process modules standing in
+    for the real ones -- but not yet run against a real Windows machine
+    end to end. Flagged here deliberately rather than silently assumed
+    correct. Worth a real test pass on actual Windows hardware before
+    leaning on it.
+    """
+    try:
+        import win32api
+        import win32con
+        import win32gui
+        import win32process
+
+        hwnd = win32gui.GetForegroundWindow()
+        if not hwnd:
+            return "unknown"
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        if not pid:
+            return "unknown"
+        handle = win32api.OpenProcess(
+            win32con.PROCESS_QUERY_INFORMATION | win32con.PROCESS_VM_READ, False, pid
+        )
+        try:
+            exe_path = win32process.GetModuleFileNameEx(handle, 0)
+        finally:
+            win32api.CloseHandle(handle)
+        name = ntpath.basename(exe_path)
+        if name.lower().endswith(".exe"):
+            name = name[:-4]
+        return name or "unknown"
     except Exception:
         return "unknown"
 

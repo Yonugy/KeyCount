@@ -55,6 +55,11 @@ func main() {
 	mux.HandleFunc("GET /v1/leaderboards/keystrokes", srv.requireUser(srv.handleLeaderboardKeystrokes))
 	mux.HandleFunc("GET /v1/leaderboards/streak", srv.requireUser(srv.handleLeaderboardStreak))
 	mux.HandleFunc("GET /v1/users/{username}/public-profile", srv.handlePublicProfile)
+	mux.HandleFunc("GET /v1/friends", srv.requireUser(srv.handleListFriends))
+	mux.HandleFunc("POST /v1/friends/request", srv.requireUser(srv.handleSendFriendRequest))
+	mux.HandleFunc("POST /v1/friends/{username}/accept", srv.requireUser(srv.handleAcceptFriendRequest))
+	mux.HandleFunc("POST /v1/friends/{username}/decline", srv.requireUser(srv.handleDeclineFriendRequest))
+	mux.HandleFunc("DELETE /v1/friends/{username}", srv.requireUser(srv.handleRemoveFriend))
 
 	addr := os.Getenv("ADDR")
 	if addr == "" {
