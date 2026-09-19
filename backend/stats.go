@@ -9,15 +9,35 @@ import (
 // rangeStart turns a ?range= query value into the earliest instant that
 // range covers. Shared by /v1/me/stats and /v1/me/apps-breakdown so both
 // endpoints agree on what "today"/"week"/"month"/"all" mean.
+//
+// Fixed 2026-09-17: this used to subtract from the current instant
+// (now.AddDate(0, 0, -7)) and then get truncated to a bare date by the
+// caller's since.Format("2006-01-02") before being used in `date >= $2`.
+// Truncating a timestamp to a date always rounds down, so "7 days before
+// this instant" lands on the SAME calendar date as "7 days before
+// midnight" -- meaning the inclusive `>= that date` range actually spans
+// 8 calendar dates (that date through today), not 7. That's what produced
+// the "Last 7 days" chart sitting above an "Averaged over 8 days" caption
+// (both real, just built from two different day-counts of the same
+// window). Fixed by truncating to the start of today FIRST, then
+// subtracting whole days: "week" is today minus 6 days, so the inclusive
+// range is exactly 7 calendar dates, matching WeekChart's 7 bars
+// (TodayView.tsx's last7Days, which is a fixed 7-entry slice and was
+// never affected by this). "month" gets the same start-of-day truncation
+// for the same reason, though its day-count still varies 28-31 days by
+// design (see TodayView.tsx's note on why a 30-day chart is "close
+// enough" against the calendar-month total) -- only the extra off-by-one
+// from time-of-day truncation is what's fixed here.
 func rangeStart(rangeParam string) (time.Time, error) {
 	now := time.Now().UTC()
+	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	switch rangeParam {
 	case "today":
-		return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC), nil
+		return startOfToday, nil
 	case "week":
-		return now.AddDate(0, 0, -7), nil
+		return startOfToday.AddDate(0, 0, -6), nil
 	case "month":
-		return now.AddDate(0, -1, 0), nil
+		return startOfToday.AddDate(0, -1, 0), nil
 	case "all":
 		return time.Unix(0, 0).UTC(), nil
 	default:

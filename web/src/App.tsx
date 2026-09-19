@@ -6,6 +6,7 @@ import PublicProfilePage from "./components/PublicProfilePage";
 import LandingPage from "./components/LandingPage";
 import FeaturesPage from "./components/FeaturesPage";
 import DownloadPage from "./components/DownloadPage";
+import GlobalClickSound from "./components/GlobalClickSound";
 
 // Routing phase 2 (2026-09-13): "/" is now the real landing page, not
 // phase 1's RootRedirect placeholder -- it renders for every visitor,
@@ -23,22 +24,28 @@ import DownloadPage from "./components/DownloadPage";
 // on any of these paths.
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/features" element={<FeaturesPage />} />
-      <Route path="/download" element={<DownloadPage />} />
-      <Route path="/login" element={<LoginRoute />} />
-      <Route path="/u/:username" element={<PublicProfileRoute />} />
-      <Route
-        path="/app"
-        element={
-          <RequireAuth>
-            <Dashboard />
-          </RequireAuth>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      {/* Mounted once, outside Routes, so it's present on every page
+          including Login and the signed-in Dashboard -- see
+          GlobalClickSound.tsx for the scope/dedupe reasoning. */}
+      <GlobalClickSound />
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/features" element={<FeaturesPage />} />
+        <Route path="/download" element={<DownloadPage />} />
+        <Route path="/login" element={<LoginRoute />} />
+        <Route path="/u/:username" element={<PublicProfileRoute />} />
+        <Route
+          path="/app"
+          element={
+            <RequireAuth>
+              <Dashboard />
+            </RequireAuth>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   );
 }
 

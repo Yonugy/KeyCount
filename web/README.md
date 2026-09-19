@@ -830,10 +830,542 @@ Re-ran the phase 2 Playwright suite (still 19/19, one selector updated
 for the new "Prefer to run from source?" heading text) plus 10 new
 checks for the download links/asset names/caveat copy -- all pass.
 
+## 2026-09-16: phase 5 -- space background and arcade buttons on the landing hero
+
+Scope decided up front rather than guessed at: starfield only (not the
+flying-letters idea from the original pitch -- picked as the single
+background effect so the hero text stays legible over it), click sound
+off by default with a visible toggle to turn it on, and all of this
+confined to the landing page's hero -- Features, Download, and
+everything below the hero on `/` itself keep the plain existing look.
+
+Three new pieces:
+
+- `Starfield.tsx` -- a canvas-drawn field of slowly drifting, gently
+  twinkling stars behind the hero. Respects `prefers-reduced-motion`:
+  drawn once and left static for anyone with that preference set,
+  instead of just slowing the animation down.
+- `clickSound.ts` -- no audio file shipped. Two very short Web Audio API
+  blips synthesized on the fly, a higher "tik" on press and a lower
+  "tak" on release, the same mechanical-switch idea as a real arcade
+  button. Muted by default, `SoundToggle.tsx` is the only way a visitor
+  turns it on.
+- `ArcadeButton.tsx` -- swaps in for the hero's two CTAs (Download, See
+  what it does). Presses down and pops back up on mouse/touch, calling
+  the click sound functions above when sound is on.
+
+The hero gets a fixed dark background regardless of the site's own
+light/dark theme -- a space scene doesn't read as one rendered on a
+white background -- while `PublicNav` and everything below the hero
+keep using the normal theme tokens untouched.
+
+Known gap, flagged rather than left quiet: the press animation and
+click sound fire on mouse/touch events, not on keyboard activation
+(Enter/Space on a focused link fires a plain click, no mousedown/mouseup
+either side of it). Navigation itself still works fine by keyboard,
+it's only this decorative flourish that's mouse/touch-only for now.
+
+Verified with Playwright: the starfield canvas renders only on `/` (not
+Features/Download), the sound toggle flips state correctly, a real
+mousedown/mouseup on the Download button produces the expected
+translateY + inset-shadow "pressed" look (checked via computed style,
+not just eyeballing a screenshot), the page still loads cleanly under
+`prefers-reduced-motion: reduce`, and there are no console/page errors
+on load. Screenshotted at desktop and phone widths and in light mode to
+confirm the rest of the page (nav, highlight cards, footer) still themes
+normally.
+
+## 2026-09-16: typewriter headline + a softer hero-to-content seam
+
+Two small follow-ups to the same day's phase 5 work, both suggested as
+"what's still missing" feedback after seeing it live:
+
+- `Typewriter.tsx` -- the hero headline now types itself out one
+  character at a time on load, with a blinking terminal-style cursor
+  that keeps going once it's done. Ties the page's one animation to
+  what the product actually does (typing), instead of being separate
+  from it. Skips straight to the full headline, no animation, under
+  `prefers-reduced-motion`, same as `Starfield.tsx` and `ArcadeButton`.
+- A gradient div at the bottom of the hero fades the dark space
+  background into `var(--plane)`, the same page-background token the
+  section below it already sits on, in whichever theme is active.
+  Replaces what used to be a hard line where the hero met the content
+  below.
+
+The phase 2 Playwright suite's headline check now waits for the type-out
+to finish (`page.wait_for_function` polling the rendered text) rather
+than reading the headline the instant the page loads, since the full
+string isn't there immediately anymore, that's the point. All 19 checks
+still pass, plus new checks confirming the headline is genuinely partial
+partway through, complete shortly after, immediate under reduced
+motion, and that the gradient div is actually present.
+
+## 2026-09-16: quieter dashboard link, key sounds, and a big animated cursor
+
+Three more requests against the same phase 5 hero, all landed together:
+
+- **The "Already tracking, go to your dashboard" link no longer sits
+  under a permanent underline.** It picked up the browser's default
+  underline by accident (no `textDecoration` was ever set on it) and
+  read as visually heavier than intended next to the arcade buttons.
+  New `.kc-quiet-link` utility class in `index.css`: no underline at
+  rest, underline back on hover/focus so it's still legible as a link
+  and keyboard focus stays visible (`:focus-visible`, not just
+  `:hover`).
+- **A key-tap sound**, via a new `playKeySound()` in `clickSound.ts` --
+  a shorter, higher, quieter blip than the button press/release sounds,
+  with a little pitch jitter so a fast run of taps doesn't sound like
+  the same note on a loop. Wired in two places, both gated behind the
+  existing sound-on preference (`SoundToggle`, off by default):
+  - `Typewriter.tsx` plays it once per character as the headline types
+    itself out.
+  - `LandingPage.tsx` also listens for real `keydown` events on the
+    page and plays it for an actual keystroke (modifier-only presses --
+    Shift, Control, Alt, Meta, CapsLock -- are filtered out so resting a
+    hand on a modifier doesn't sound). **Deliberately scoped to just the
+    landing page**, not sitewide -- a listener that reacts to every
+    keystroke has no business being active anywhere near a future page
+    with a password field, so this doesn't extend to `/login`.
+- **A big animated cursor**, `CustomCursor.tsx`, new. A glowing ring
+  trails the real pointer with a little lag (lerp/spring easing, not a
+  rigid 1:1 follow) and grows and brightens over links/buttons, plus a
+  short canvas-drawn particle trail spawned as the pointer moves. It
+  layers on top of the real system cursor rather than replacing it --
+  `cursor: none` is never set anywhere -- since hiding the OS cursor
+  would be a real accessibility regression (precise pointing, screen
+  magnifiers, and OS cursor accommodations all depend on it being
+  there). Fully skipped -- no listeners attached, nothing drawn -- under
+  `prefers-reduced-motion` and on any device without a real mouse
+  (`(hover: hover) and (pointer: fine)` fails on touch/coarse-pointer
+  devices). Mounted once inside `PublicNav.tsx`, the one component
+  already shared across exactly Landing/Features/Download, so it
+  reaches all three without each page wiring it up. **Also deliberately
+  scoped**: it does not reach `/login` (outside `PublicNav`) or the
+  authenticated dashboard app (its own separate nav) -- Login for the
+  same reason as the key sound above, and the dashboard because it's a
+  working tool someone uses all day, not a themed marketing page.
+
+New Playwright checks (`phase5b_test.py`, not yet folded into the main
+suite file) cover: no underline at rest / underline on hover for the
+quiet link; the typewriter firing oscillator-level key sounds while
+sound is on; real `a`/`b` keydowns firing additional sounds while
+`Shift` alone doesn't; no sounds at all with the pref left at its
+off-by-default state; the cursor ring and particle canvas present on
+all three public pages; the real cursor never hidden; and, on `/login`
+specifically, neither the cursor nor the keydown sound listener present.
+All 19 checks in the main phase 2 suite still pass unchanged.
+
+## 2026-09-16: click sounds everywhere, an orange re-theme, and a real cursor
+
+Three more requests against the same phase 5 hero, this round widened to
+the whole app rather than just the public marketing pages:
+
+- **Click sound on every real button, sitewide.** A new
+  `playClickSound()` in `clickSound.ts`, and a new
+  `GlobalClickSound.tsx` mounted once at the app root in `App.tsx` (so
+  it's active on every route, not just the three public pages) that
+  delegates a single `click` listener to any `<button>` or
+  `[role="button"]` on the page and plays the sound, skipping disabled
+  buttons. This now covers the Login submit button and everything in the
+  signed-in Dashboard (tabs, sign out, settings toggles) in addition to
+  the public pages. It's deliberately scoped to real buttons, not every
+  clickable thing -- the arcade CTAs on the landing hero render as an
+  `<a>`, not a `<button>`, and already have their own press/release
+  sound from `ArcadeButton.tsx`'s own `mousedown`/`mouseup` handlers, so
+  the two never double up. Still gated by the existing sound-on
+  preference, off by default.
+- **The whole site's accent color moved from blue to orange**, at
+  request, including the dashboard's charts and keyboard heatmap, not
+  just the marketing pages. Turns out the entire app already draws from
+  one CSS custom property (`--accent` in `index.css`, plus its
+  `--seq-1..5` sequential ramp for the heatmap) rather than scattered
+  hardcoded hex values, so this was a token swap rather than a
+  file-by-file hunt. The new orange values were picked and checked with
+  the same contrast tooling the dataviz skill ships
+  (`validate_palette.js`'s `contrast()` and `validateOrdinal()`),
+  targeting the outgoing blue palette's own numbers as the bar to clear
+  rather than an arbitrary new standard -- see the comments directly
+  above `--accent` and the `--seq-*` block in `index.css` for the exact
+  before/after contrast ratios and why a brighter orange than the one
+  chosen would have looked great as text but made white button labels
+  unreadable.
+- **The cursor effect was rebuilt from scratch** after direct feedback
+  that the old glowing ring read as "a circle following the mouse," not
+  a mouse, and that the particle trail looked messy. `CustomCursor.tsx`
+  now renders a real arrow-cursor glyph (an SVG, not a canvas shape),
+  sized well above a normal pointer, tightly spring-follows the real
+  cursor so its tip sits right on top of the actual pointer position
+  instead of trailing behind, grows and glows on hover the same as
+  before, and now also reacts to clicks: a quick squish on press and an
+  expanding fading ring burst on release, which is the "click animation"
+  that was missing entirely before. The trail is a tapered comet-style
+  stroke plus a few small drifting sparkles rather than a scatter of
+  flat dots, meant to read as intentional and to echo the hero's
+  starfield rather than looking bolted on. The glyph's fill uses
+  `var(--accent)` directly so it always matches the live theme color
+  (including light/dark) without this component needing to track the
+  current hex itself; the canvas-drawn trail and burst read the
+  resolved color once via `getComputedStyle` and refresh it if the OS
+  color scheme changes while the page is open. Scope is unchanged from
+  before (Landing/Features/Download only, via `PublicNav.tsx`, not Login
+  or the Dashboard) -- that wasn't part of this round's request, so it
+  wasn't touched.
+
+New Playwright checks (`phase5c_test.py`) cover: the new orange
+`--accent` value in both light and dark color-scheme emulation, the old
+ring being gone and the new arrow glyph present and tracking the mouse,
+the click burst actually drawing non-transparent pixels on its canvas,
+the Login submit button and the Dashboard "Sign out" button both firing
+a click sound, and the arcade CTA still firing exactly its own two
+press/release sounds rather than three (confirming the new global
+listener doesn't double up with it). All checks in the earlier phase 2
+and phase 5b suites still pass unchanged.
+
+## 2026-09-16: hover sounds, and the navigation links finally make noise
+
+A same-day follow-up to the click-sound-everywhere and orange re-theme
+work above, after feedback that hovering was silent and that PublicNav's
+own links (Features, Download, Sign in / Go to dashboard) never made a
+sound at all.
+
+The root cause for the second one: `GlobalClickSound.tsx`'s delegated
+listener only ever matched real `<button>` elements (and
+`role="button"`), and PublicNav's links are plain `<a>` tags, so they
+were never in scope. Rather than just adding them to the same bucket,
+this became three distinct sound "voices" so a hover/click actually
+tells you what kind of control you're on, per the "give special buttons
+a different tune" ask:
+
+- **Generic buttons** (dashboard tabs, sign out, settings toggles, the
+  sound toggle, the login submit button) -- unchanged click tune, plus a
+  new soft sine-wave `playHoverSound()` for hovering them.
+- **Nav links** (`PublicNav.tsx`'s own Features/Download/logo/Sign-in-or-
+  dashboard-pill) -- a new triangle-wave `playNavClickSound()` /
+  `playNavHoverSound()` pair, pitched higher and airier than the generic
+  buttons specifically so it reads as a different kind of control, not
+  just a quieter version of the same click.
+- **CTA-style accent buttons** (the arcade hero buttons, and the
+  Download page's actual accent-colored Download button, which was the
+  other reported gap -- it's a plain `<a>` too, not the ArcadeButton
+  component, so it never had sound either) -- kept their own bespoke
+  handlers rather than going through the delegated listener, so the
+  sound stays exactly in sync with the press animation. `ArcadeButton.tsx`
+  and `DownloadPage.tsx` both gained a matching `onMouseEnter` ->
+  `playCtaHoverSound()`, a new quiet blip in the same square-wave family
+  as the existing press/release tones (`clickSound.ts`), pitched between
+  them so hover -> press -> release reads as one three-note gesture on
+  the same "instrument."
+
+`GlobalClickSound.tsx`'s selector grew from `'button, [role="button"]'`
+to `'button, [role="button"], nav a'`, plus a `mouseover`-based delegated
+hover handler alongside the existing click one (mouseenter/mouseleave
+don't bubble, so it tracks the last-matched element itself and only
+fires when that match actually changes). The three voices don't collide
+with each other by construction, not by an explicit exclusion list: the
+CTA buttons are `<a>` tags that sit outside any `<nav>` and aren't real
+`<button>`s either, so neither of the delegated selectors ever matches
+them in the first place.
+
+New Playwright checks (`phase5d_test.py`) confirm: hovering and clicking
+the Features nav link both make sound now, the nav tune is genuinely the
+triangle-wave family (not the generic click reused at a different
+volume), the sound toggle button gets a generic hover sound, the arcade
+CTA's hover stays on the square-wave family rather than picking up the
+nav tune, and the Download page's real Download button now fires
+hover+press+release. All earlier suites (`routing_phase2_test.py`,
+`phase5b_test.py`, `phase5c_test.py`) still pass unchanged -- `phase5b`
+had its now-obsolete "ring cursor" shape check removed since `phase5c`
+already covers the current arrow-glyph shape.
+
+## 2026-09-16: buttons actually move on hover, and a volume rebalance
+
+Same-day follow-up after feedback that hovering played a sound but
+nothing visually reacted, that the navigation sounds were noticeably
+quieter than everything else, and that the typewriter's key-taps felt
+loud with no real priority between any of these -- three separate but
+related balance issues.
+
+**Visual hover, added globally.** Almost every button in the app is
+styled with inline `style` objects, which can't express a `:hover`
+pseudo-class, so there was previously no way for most controls to react
+visually to a hover at all. Rather than hand-wire hover state into every
+component, `index.css` gained one shared rule covering `button`,
+`[role="button"]`, and `nav a`: a small lift (`translateY(-1px)`) plus a
+touch more brightness on hover, a slight press-down on `:active`, skipped
+under `prefers-reduced-motion` (falls back to a brightness-only change,
+no transform). That covers dashboard tabs, sign out, settings toggles,
+the login submit button, and PublicNav's own links in one place. The
+arcade hero CTAs and the Download page's real Download button are
+deliberately excluded from that shared rule -- they already have their
+own JS-driven hover lift (`ArcadeButton.tsx`'s `hovered` state, mirrored
+directly in `DownloadPage.tsx`) that has to compose with a *press*
+animation too (hover lifts 2px, press pushes 3px past that), which a
+plain CSS rule can't coordinate.
+
+**Volume rebalance**, with an explicit three-tier priority now
+documented at the top of `clickSound.ts` itself:
+- Tier 1, real clicks (CTA press/release, generic buttons, nav links) --
+  the nav click was quietly under-volumed at 0.11 gain against the
+  generic click's 0.13; it's 0.13 now, matching it, since following a
+  nav link is just as deliberate an action as clicking a button.
+- Tier 2, hover previews -- same story for nav hover, bumped from a
+  barely-audible 0.05 up to 0.07 to match the generic hover.
+- Tier 3, ambient/decorative (the typewriter's per-character key-tap) --
+  cut from 0.09 down to 0.045. This one isn't like the others: it fires
+  once every ~45ms while the headline types out, so even a modest
+  per-blip gain compounds into something that reads as loud in
+  aggregate. It needed to start well below the click/hover tiers, not
+  just a little under them, to land at a comparable perceived loudness.
+
+**A separate, softer click tune for the signed-in dashboard.** Reported
+directly: switching dashboard tabs, signing out, and toggling settings
+happens far more often per session than clicking a button anywhere else
+in the app, and the sharp square-wave generic click got grating under
+that much repetition. `GlobalClickSound.tsx` now checks
+`window.location.pathname.startsWith('/app')` and routes real-button
+clicks there to a new `playDashboardClickSound()` -- lower-pitched (480Hz
+vs 780Hz) and on a gentler sine wave rather than square, still Tier 1
+loudness. The login submit button (a one-off action, not repeated
+clicking) stays on the ordinary generic click tune; only the dashboard
+itself gets the softer one.
+
+New Playwright checks (`phase5e_test.py`) instrument both the oscillator
+type/frequency and the gain envelope's actual peak value (not just which
+tune played) to confirm: hovering a nav link and a generic button both
+now move the element (and don't under reduced motion), the nav
+hover/click peaks now clear the same floor as the generic tiers, the
+typewriter's peak stays well below a real click's, dashboard tab clicks
+use the new sine/480Hz tune, and the login submit button still uses the
+ordinary square/780Hz one. All earlier suites still pass unchanged.
+
+## 2026-09-16: the landing page actually has something to scroll to now
+
+Direct feedback: the landing page "kinda lack something... in terms of
+information... maybe some graphics like icon and stuff," and had
+"nothing to even scroll." Fair -- the hero was the whole page. Three
+things landed, all below the hero, none of it touching the hero itself:
+
+**A real product screenshot**, not a mockup. Rather than hand-draw a
+fake dashboard, a throwaway backend + frontend pair was spun up, a test
+account seeded with ~21 days of generated sample activity via
+`POST /v1/ingest/batch` (a realistic workday shape: ramp-up, a lunch
+dip, an evening taper, a couple of skipped rest days so the streak looks
+like a person's, not a script's), and the actual Today view screenshotted
+with Playwright against that seeded account. The image lives at
+`public/dashboard-preview.png` and is captioned "Sample dashboard shown
+with seeded demo data" directly under it -- explicit, not fine print,
+since letting a demo account's numbers pass as real user activity would
+be the same kind of dishonesty as a fabricated testimonial. (No
+testimonials, reviews, or social-proof numbers were added anywhere on
+this page, same as before -- there are no real users yet to attribute
+those to.) The screenshot sits in a small rounded frame with a
+three-dot "window chrome" strip on top, mostly so it reads as "a
+picture of the app" rather than part of the page's own layout.
+
+**Icons on the three highlight cards.** `Local-first`, `Streaks and
+history`, and `Leaderboards, global or friends` previously had no visual
+distinction beyond their text. Each now gets a small inline SVG
+(shield / flame / trophy) on an accent-colored tile above its heading --
+plain stroke-style icons sharing one visual language (24x24 viewbox,
+`currentColor`, 1.75 stroke), hand-written directly in
+`LandingPage.tsx` rather than pulling in an icon library for three
+glyphs.
+
+**A three-step "How it works" strip** (install -> runs quietly in the
+background -> check your dashboard), each step in a numbered circle in
+the accent color. Added mainly for scroll depth and to spell out "what
+actually happens" in plain language, since the hero's copy alone doesn't
+walk through the actual flow.
+
+Together these took the landing page from one screen-height with
+nothing below the fold to a real page with four distinct sections after
+the hero. `phase6_test.py` checks: the screenshot section's heading and
+caption are present, the preview image actually loads
+(`naturalWidth > 0`), at least three inline SVGs render, all three
+how-it-works steps are present by name, the page's `scrollHeight` now
+clears 1.5x a normal viewport height (the literal "nothing to scroll to"
+complaint), and all three original highlight cards are still intact.
+All five earlier suites (62 checks) still pass unchanged.
+
+## 2026-09-16: the sound toggle reaches the dashboard too
+
+Direct request: "add the mute unmute button in the logged in dashboard
+also" -- until now `SoundToggle.tsx` only ever rendered on the landing
+page hero, so there was no way to turn dashboard click sounds on/off
+without signing out first.
+
+`SoundToggle` gained a `variant` prop (`"hero" | "subtle"`, default
+`"hero"` so the landing page is untouched). The hero variant keeps its
+original look, built for sitting directly on the hero's fixed dark
+background regardless of the site's own theme. The new `"subtle"`
+variant uses the same theme tokens (`var(--border)`, `var(--text-
+secondary)`) the dashboard's own `Sign out` button already uses, so it
+reads correctly in both light and dark mode instead of rendering
+near-invisible white-on-white. `Dashboard.tsx` now renders
+`<SoundToggle variant="subtle" />` in its header, immediately to the
+left of `Sign out`. Its label also changed from "Click sound: on/off"
+to just "Sound: on/off" now that it controls sound in two different
+places, not only click sound on one page.
+
+No new plumbing was needed beyond that: the toggle button is a plain
+`<button>`, so it automatically inherits the sitewide hover animation
+and the dashboard's own softer click tune from the existing global
+rules, same as every other control in the header.
+
+Verified manually (seeded test account, light + dark screenshots of the
+header) that the toggle sits correctly next to Sign out, flips
+`keycount:soundEnabled` in localStorage on click, and that state
+persists across tab switches within the dashboard. All existing suites
+still pass.
+
+## 2026-09-16: fixed a silent click on the day switcher's Next button
+
+Reported directly, and precisely: "when i click the right button in
+yesterday view, there is no sound effect, but other day all got sound
+effect... i want to go to next day (today view), there is no button
+clicked sound effect." Confirmed with a Playwright repro before touching
+anything -- clicking Next from any other day correctly played hover then
+click notes, but the one click that landed exactly on Today played only
+the hover note, silently dropping the click.
+
+The cause: `DayView.tsx`'s Next button (`canGoNext = selectedDate <
+todayIso`) disables itself once you're on Today, since there's no
+further day to go to. Clicking Next from Yesterday both navigates to
+Today *and*, as a side effect of that same click, disables the very
+button that was just clicked. `GlobalClickSound.tsx`'s delegated click
+listener was registered on the bubble phase, same as everything else
+sound-related in the app -- but React 18 flushes state updates from a
+native event synchronously before that event finishes bubbling past the
+app root up to a plain `document` listener. So by the time this handler
+ran and checked `isDisabled(el)`, the button's real `disabled` attribute
+had already flipped to `true` (set by React a moment earlier in the same
+event), and the click sound got skipped as if the button had been
+disabled all along -- even though it was a completely ordinary, enabled
+click. Nothing else in the app hits this, since the day switcher's
+Next/Previous buttons are the only controls whose own click can disable
+themselves.
+
+Fixed by switching just the click listener (`document.addEventListener
+("click", handleClick, true)`) to the capture phase, which runs on the
+way *down* to the clicked element, before its own `onClick` (and
+therefore before React's re-render) fires -- so `isDisabled` always
+reads the button's state as it actually was at the moment of the click.
+`mouseover` stays on the bubble phase unchanged; hovering never changes
+a button's disabled state, so it was never affected.
+
+`phase7_test.py` (new) seeds a 3-day test account and checks: the exact
+reported case (Next from Yesterday, landing on Today) now plays its
+click note; an ordinary Next click that doesn't land on Today still did
+and still does; hovering the button still sounds; and no console errors
+from repeatedly hitting the boundary (clicking Previous again once
+already on the oldest available day). All earlier suites still pass
+unchanged.
+
+## 2026-09-16: clicks nudged louder, and the starfield now covers the whole landing page
+
+Two small, unrelated requests handled together:
+
+**Click sounds, slightly louder.** Direct request: "make it slightly
+more noticeable." `playClickSound()` (generic buttons) and
+`playNavClickSound()` went 0.13 -> 0.15 gain, `playDashboardClickSound()`
+went 0.10 -> 0.12 -- all three Tier 1 click sounds, proportionally, so
+the documented balance between them (dashboard clicks softer than
+generic, nav matching generic) holds exactly as before, just a bit
+louder across the board. Hover (Tier 2) and the typewriter (Tier 3)
+were untouched -- the request was specifically about clicks.
+
+**Starfield now backs the entire landing page, not just the hero.**
+Direct feedback: "the star effect only on top tho. dont u think it
+should cover the whole page?" Confirmed the direction first (whole
+landing page dark, vs. the whole site always-dark, vs. a
+theme-aware version everywhere) since going wider than "just the hero"
+means picking one of those, and they're meaningfully different asks --
+landed on: the entire landing page goes permanently dark, Features/
+Download/the signed-in Dashboard stay exactly as they are, still
+following the visitor's own light/dark theme.
+
+`Starfield` now renders once in a `position: fixed` layer behind the
+whole page (`zIndex: 0`, with the real content in a `zIndex: 1` wrapper
+on top) instead of living inside just the hero's `<main>`. Fixed rather
+than sized to the page's scroll height -- it just covers the viewport
+as you scroll, no resize math needed for "how tall is this page today."
+Every section below the old hero (the screenshot, the three highlight
+cards, how-it-works, the footer) switched from the theme-reactive
+`var(--text-primary)` / `var(--surface-1)` / `var(--border)` tokens to
+the same hardcoded light-on-dark colors the hero always used -- those
+tokens flip with the visitor's system theme, which would have put dark
+text on this now-permanently-dark page for anyone in light mode.
+`var(--accent)` was left alone (the icon tiles, the how-it-works step
+circles), matching how `ArcadeButton` already uses it inside the hero.
+
+`PublicNav.tsx` gained a `variant` prop (`"auto" | "dark"`, default
+`"auto"`) for the same reason -- it's shared with Features and Download,
+which still need their normal theme-reactive nav colors, so only the
+landing page passes `variant="dark"` to get hardcoded white/rgba-white
+text instead.
+
+`phase5_test.py`'s three oldest starfield-scope checks got fixed rather
+than left stale: they were asserting `main canvas` specifically (the
+canvas moved out of `<main>` in this change) and `canvas count() == 0`
+on Features/Download (already inaccurate before this change too, since
+CustomCursor's own canvas mounts on those pages -- an earlier-phase
+addition that check predated). New `phase8_test.py` covers this round
+directly: the starfield canvas sits outside `<main>` in a fixed-position
+wrapper, the landing page's outer background is the fixed dark color,
+a highlight card's title renders as literal white text (not a
+theme-reactive token), the landing nav logo is forced white, and
+Features/Download still show exactly one canvas (cursor only, no
+starfield) with their nav unaffected. All eight other suites still pass
+unchanged.
+
+## 2026-09-16: the sound toggle's own click went silent (a side effect of the earlier capture-phase fix)
+
+Reported directly, bluntly, and accurately: "i literally didnt hear a
+sound anymore in the logged in page anymore." Reproduced first --
+turning sound ON via the toggle played nothing on that click, while
+every click afterward (tab switches, etc.) worked completely normally.
+That first silent click is exactly the kind of thing that reads as
+"sound is broken" rather than "one specific click is quiet," especially
+if nothing else gets clicked right after.
+
+The cause: a direct side effect of the capture-phase fix from earlier
+today (the one that fixed the day switcher's Next button). That fix made
+`GlobalClickSound.tsx`'s delegated listener check `isSoundEnabled()` on
+its way *down* to the clicked element, before that element's own
+`onClick` runs. For the sound toggle specifically, that means the
+delegated listener always reads the sound preference from *before* this
+click, which for the one click that turns sound on is always "off" --
+so it correctly (per its own logic) stays silent, even though the
+visitor just turned sound on with that exact click. Turning sound back
+off was never affected: sound is still genuinely on at the moment that
+click is captured, so the delegated listener plays its confirming click
+correctly, same as always.
+
+Fixed in `SoundToggle.tsx` itself rather than in the delegated listener:
+its own `onClick` now plays a confirming click directly right after
+calling `setSoundEnabled(true)`, using the same tune the delegated
+listener would have played (the dashboard's softer tune on `/app`, the
+ordinary one everywhere else) so it's indistinguishable from any other
+click's sound. No risk of double-firing -- the delegated listener still
+runs first (capture phase) and still correctly stays silent since sound
+was off a moment earlier, so exactly one click plays, not two. The
+off-to-on direction was the only one needing this; the on-to-off
+direction was already correct and untouched.
+
+`phase9_test.py` (new) checks: turning sound on in the dashboard plays
+exactly one confirming click (the dashboard's softer sine tune, not the
+sharp generic one), turning it back off still plays exactly one click,
+an ordinary tab click afterward still fires its normal hover+click pair
+with no double-count, and the same "confirming click on enable" behavior
+holds on the landing page too, using its own ordinary click tune rather
+than the dashboard one. All nine other suites still pass unchanged.
+
 ## Next
 
-Cut the first real release (`git tag v0.1.0 && git push origin v0.1.0`)
-to actually populate `/download`'s buttons -- until a release exists,
-they 404 and visitors fall through to "run from source". After that,
-phase 5 (the space-background/animated-button visual pass) from the
-project plan, or whatever `../ROADMAP.md` calls out next.
+The site itself still isn't hosted anywhere public -- that's the main
+gap before any of this reaches someone other than whoever's running the
+dev server. Also still open: a `v0.1.1` agent release, once the
+local-database bug found after `v0.1.0` shipped (see `agent.py` and the
+root README) has been retested on real hardware, since that fix hasn't
+been tested outside this project's Linux dev sandbox yet. Otherwise,
+whatever `../ROADMAP.md` calls out next.

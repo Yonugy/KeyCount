@@ -12,8 +12,23 @@
   --text-muted: #898781;
   --gridline: #2c2c2a;
   --baseline: #383835;
-  --accent: #3987e5; /* categorical slot 1 (blue), dark step */
-  --accent-dim: #184f95; /* sequential blue step 600 */
+  /* Accent re-themed blue -> orange, 2026-09-16, at the user's request,
+     sitewide (this token drives every chart, button, and link across
+     the whole app, not just the marketing pages -- see the dataviz
+     skill's "single accent hue throughout" pattern already in use here,
+     confirmed by grepping for var(--accent) before touching this).
+     Picked and checked with the same contrast tooling the skill ships
+     (scripts/validate_palette.js's contrast() and validateOrdinal()),
+     targeting the outgoing blue's own numbers rather than a fresh
+     standard: white text on this background needs to clear roughly what
+     white-on-#3987e5 cleared (3.64:1), and the color as text on --plane
+     needs to clear roughly what #3987e5 cleared there (5.34:1). Bright
+     oranges look great as text but crater the white-on-background number
+     (a #f7.. orange reads ~2.3-2.6:1 with white on it -- too low for the
+     button text that leans on this token everywhere), so this landed
+     more saturated/less bright than a first guess would suggest. */
+  --accent: #de5f08; /* white-on-bg 3.65:1, text-vs-plane 5.32:1 */
+  --accent-dim: #85421e; /* = --seq-2 below; unused by any component today, kept for parity with the old token */
   --success: #0ca30c;
   --border: rgba(255, 255, 255, 0.1);
   /* Same border color at higher opacity -- for a card that's a large,
@@ -24,13 +39,22 @@
      tab's activity-calendar card specifically. */
   --border-strong: rgba(255, 255, 255, 0.32);
 
-  /* sequential blue ramp, for the heatmap (lightest = least activity) */
+  /* Sequential orange ramp for the heatmap (lightest = least activity),
+     re-themed the same day as --accent above. Checked with
+     validateOrdinal(): lightness climbs monotonically step to step with
+     every adjacent gap over the 0.06 OKLCH-L floor, and it's a single
+     hue throughout (4 degrees of hue drift end to end). The one check it
+     doesn't clear is the lightest step's contrast against the chart
+     surface (1.74:1, floor is 2:1) -- the outgoing blue ramp didn't
+     clear that floor either (1.76:1), so this isn't a new gap, it's the
+     same "near-zero activity nearly blends into the surface" look the
+     ramp always had, now in orange. */
   --seq-0: var(--surface-1);
-  --seq-1: #104281;
-  --seq-2: #184f95;
-  --seq-3: #1c5cab;
-  --seq-4: #256abf;
-  --seq-5: #2a78d6;
+  --seq-1: #653620;
+  --seq-2: #85421e;
+  --seq-3: #a95019;
+  --seq-4: #cc5e14;
+  --seq-5: #f0710f;
 
   /* readable label ink for text drawn directly on a --seq-N fill (the
      keyboard heatmap) -- every seq step in dark mode is dark enough that
@@ -55,18 +79,21 @@
     --text-muted: #898781;
     --gridline: #e1e0d9;
     --baseline: #c3c2b7;
-    --accent: #2a78d6;
-    --accent-dim: #86b6ef;
+    /* Same orange re-theme as the dark block above, light-mode step:
+       white-on-bg 4.95:1, text-vs-plane 4.69:1 -- both clear the
+       outgoing light blue's own numbers (4.42:1 / 4.19:1). */
+    --accent: #b85200;
+    --accent-dim: #f4b27b;
     --success: #006300;
     --border: rgba(11, 11, 11, 0.1);
     --border-strong: rgba(11, 11, 11, 0.32);
 
     --seq-0: var(--surface-1);
-    --seq-1: #cde2fb;
-    --seq-2: #9ec5f4;
-    --seq-3: #6da7ec;
-    --seq-4: #3987e5;
-    --seq-5: #1c5cab;
+    --seq-1: #fadcc2;
+    --seq-2: #f6bd8e;
+    --seq-3: #ef9652;
+    --seq-4: #e86e17;
+    --seq-5: #b6500c;
 
     --seq-0-ink: var(--text-muted);
     --seq-1-ink: var(--text-primary);
@@ -99,4 +126,74 @@ input {
 
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* A real visual hover reaction for buttons and nav links (2026-09-16,
+   after direct feedback that hovering made sound but nothing actually
+   moved). Applied globally via a plain CSS rule rather than per
+   component -- almost every button in the app is styled with inline
+   `style` objects, which can't express a `:hover` pseudo-class, so a
+   shared stylesheet rule was the only way to cover all of them (tabs,
+   sign out, toggles, the login submit button, PublicNav's links) in one
+   place instead of hand-wiring hover state into each one. A small lift
+   plus a touch more brightness reads as "pressable" without being
+   showy. The arcade hero CTAs and the Download page's real Download
+   button are deliberately NOT covered here -- ArcadeButton.tsx has its
+   own JS-driven hover lift that composes with its press animation, and
+   DownloadPage's button mirrors it directly, since a CSS-only lift can't
+   coordinate with that pressed-state logic. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+nav a {
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+button:not(:disabled):hover,
+[role="button"]:not([aria-disabled="true"]):hover,
+nav a:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.1);
+}
+button:not(:disabled):active,
+[role="button"]:not([aria-disabled="true"]):active,
+nav a:active {
+  transform: translateY(0);
+  filter: brightness(0.97);
+}
+@media (prefers-reduced-motion: reduce) {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  nav a {
+    transition: filter 0.12s ease;
+  }
+  button:not(:disabled):hover,
+  [role="button"]:not([aria-disabled="true"]):hover,
+  nav a:hover {
+    transform: none;
+  }
+}
+
+/* Landing hero's typing caret (Typewriter.tsx, 2026-09-16 phase 5
+   follow-up). Plain on/off blink -- Typewriter.tsx itself skips this
+   animation entirely under prefers-reduced-motion, so this keyframe is
+   only ever applied for visitors who haven't asked for reduced motion. */
+@keyframes keycount-caret-blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  50.01%, 100% {
+    opacity: 0;
+  }
+}
+
+/* A link that shouldn't shout "I'm a link" via a permanent underline --
+   used for the "Already tracking, go to your dashboard" link under the
+   landing hero's buttons (2026-09-16). No underline at rest, underline
+   appears on hover/focus so it's still discoverable as a link, and the
+   focus-visible outline keeps keyboard navigation legible. */
+.kc-quiet-link {
+  text-decoration: none;
+}
+.kc-quiet-link:hover,
+.kc-quiet-link:focus-visible {
+  text-decoration: underline;
 }

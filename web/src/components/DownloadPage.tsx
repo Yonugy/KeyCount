@@ -1,5 +1,6 @@
 import { useState } from "react";
 import PublicNav from "./PublicNav";
+import { playPressSound, playReleaseSound, playCtaHoverSound } from "../lib/clickSound";
 
 type OS = "mac" | "windows";
 
@@ -26,6 +27,14 @@ const ASSET_NAMES: Record<OS, string> = {
 
 export default function DownloadPage() {
   const [os, setOs] = useState<OS>("mac");
+  // Mirrors ArcadeButton.tsx's own hover-lift state -- this button gets
+  // the same CTA treatment (accent background, press/release/hover
+  // sound) so it needed the same visual hover reaction too (2026-09-16),
+  // and a plain CSS `:hover` rule can't compose with a future press
+  // animation the way tracked state can.
+  const [dlHovered, setDlHovered] = useState(false);
+  const reduceMotion =
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   return (
     <div style={{ minHeight: "100vh" }}>
@@ -90,6 +99,19 @@ export default function DownloadPage() {
           </div>
           <a
             href={`${RELEASE_BASE}/${ASSET_NAMES[os]}`}
+            // Same accent-colored CTA treatment as the hero's ArcadeButton,
+            // so it gets the same press/release/hover tune (2026-09-16 --
+            // this was "the download button" the sound effects were
+            // missing from, since it's a plain <a> rather than the
+            // ArcadeButton component or a <button>, so neither the arcade
+            // click handling nor the generic sitewide one ever reached it).
+            onMouseEnter={() => {
+              setDlHovered(true);
+              playCtaHoverSound();
+            }}
+            onMouseLeave={() => setDlHovered(false)}
+            onMouseDown={() => playPressSound()}
+            onMouseUp={() => playReleaseSound()}
             style={{
               background: "var(--accent)",
               border: "1px solid var(--accent)",
@@ -99,6 +121,10 @@ export default function DownloadPage() {
               fontSize: 13,
               fontWeight: 600,
               textDecoration: "none",
+              display: "inline-block",
+              transform: dlHovered && !reduceMotion ? "translateY(-1px)" : "translateY(0)",
+              filter: dlHovered ? "brightness(1.08)" : "none",
+              transition: reduceMotion ? "none" : "transform 90ms ease, filter 90ms ease",
             }}
           >
             Download

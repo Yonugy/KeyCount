@@ -8,6 +8,7 @@ import LeaderboardsView from "./LeaderboardsView";
 import MyProfileView from "./MyProfileView";
 import SettingsView from "./SettingsView";
 import FriendsView from "./FriendsView";
+import SoundToggle from "./SoundToggle";
 
 type Tab = "today" | "history" | "keys" | "leaderboards" | "friends" | "profile" | "settings";
 
@@ -57,20 +58,29 @@ export default function Dashboard() {
             Signed in as {username}
           </div>
         </div>
-        <button
-          onClick={handleLogout}
-          style={{
-            background: "none",
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            padding: "6px 12px",
-            color: "var(--text-secondary)",
-            fontSize: 13,
-            cursor: "pointer",
-          }}
-        >
-          Sign out
-        </button>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {/* Same sound on/off control the landing page has, added here
+              2026-09-16 by direct request so it's reachable without
+              signing out first -- dashboard clicks already get their own
+              softer tune (see clickSound.ts), this is just the switch
+              for it. "subtle" variant matches the Sign out button's own
+              styling instead of the hero's fixed-dark-background look. */}
+          <SoundToggle variant="subtle" />
+          <button
+            onClick={handleLogout}
+            style={{
+              background: "none",
+              border: "1px solid var(--border)",
+              borderRadius: 6,
+              padding: "6px 12px",
+              color: "var(--text-secondary)",
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            Sign out
+          </button>
+        </div>
       </header>
 
       <nav style={{ display: "flex", gap: 4, marginBottom: 28, borderBottom: "1px solid var(--border)" }}>

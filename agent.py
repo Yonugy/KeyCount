@@ -53,7 +53,17 @@ except ImportError:
 
 # --- config -----------------------------------------------------------
 
-DB_PATH = Path(__file__).parent / "keycount.db"
+# Where the agent lives, for the DB file to sit next to. Not simply
+# Path(__file__).parent -- under a PyInstaller onefile build (sys.frozen),
+# __file__ points into a fresh temp extraction folder that gets deleted
+# when the process exits, so a DB there would silently reset on every
+# run. sys.executable is the actual binary's stable path in that case;
+# __file__ stays correct for running the script directly from source.
+if getattr(sys, "frozen", False):
+    _APP_DIR = Path(sys.executable).parent
+else:
+    _APP_DIR = Path(__file__).parent
+DB_PATH = _APP_DIR / "keycount.db"
 FLUSH_INTERVAL_S = 60          # roll the in-memory bucket to disk every minute
 PRINT_INTERVAL_S = 5           # refresh the terminal "today" count this often
 IDLE_THRESHOLD_S = 60          # no input for this long ends the session
