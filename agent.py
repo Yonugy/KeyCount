@@ -384,9 +384,18 @@ def sync_once(store, backend_url, device_token, limit=500):
 
 LOCAL_TOKEN_SETTING = "local_api_token"
 # Only a browser on this machine is allowed to read the response -- never
-# '*'. Extend this if you ever host the dashboard somewhere other than
-# localhost.
-_ALLOWED_ORIGIN_RE = re.compile(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$")
+# '*'. Used to be localhost-only, which is what "Extend this if you ever
+# host the dashboard somewhere other than localhost" (right here) was
+# always warning about -- extended 2026-09-20 once the dashboard actually
+# moved to https://key-count.vercel.app, which otherwise hits exactly this
+# check on every Keys-tab request ("No 'Access-Control-Allow-Origin'
+# header is present" in the browser console -- this regex not matching is
+# why, not anything wrong with the connection itself, which by that point
+# had already been confirmed reachable).
+_ALLOWED_ORIGIN_RE = re.compile(
+    r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+    r"|^https://key-count\.vercel\.app$"
+)
 # Loose validation for /local/apps?date= (added 2026-09-02) -- just enough
 # to reject garbage before it reaches a SQL parameter, not a real calendar
 # check (Feb 30 passes and simply matches zero rows, which is fine).
