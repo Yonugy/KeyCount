@@ -104,7 +104,14 @@ export default function GlobalClickSound() {
     let lastHovered: Element | null = null;
     function handleMouseOver(e: MouseEvent) {
       const target = e.target as Element | null;
-      const el = target?.closest(INTERACTIVE_SELECTOR);
+      // ?? null: target?.closest(...) types as `Element | null | undefined`
+      // (the `undefined` comes from the optional-chain short-circuit when
+      // target itself is null), but lastHovered is `Element | null` --
+      // TypeScript's build mode (tsc -b, what Vercel's production build
+      // runs) rejects that undefined where the plain dev server didn't
+      // surface it as a hard error. Coercing right here keeps `el`'s type
+      // consistent with lastHovered's for the rest of this closure.
+      const el = target?.closest(INTERACTIVE_SELECTOR) ?? null;
       if (el === lastHovered) return;
       lastHovered = el;
       if (!el || isDisabled(el)) return;
