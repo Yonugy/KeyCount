@@ -42,7 +42,7 @@ jobs:
             # separately, so the release build always includes it.
             extra_dep: pyobjc-framework-Quartz
           - os: windows-latest
-            asset_name: keycount-agent-windows.zip
+            asset_name: keycount-agent-windows.exe
             binary_name: keycount-agent.exe
             extra_dep: pywin32
     runs-on: ${{ matrix.os }}
@@ -68,9 +68,9 @@ jobs:
           cd dist
           zip "../${{ matrix.asset_name }}" "${{ matrix.binary_name }}"
 
-      - name: Zip the binary (Windows)
+      - name: Rename binary for release (Windows)
         if: runner.os == 'Windows'
-        run: Compress-Archive -Path "dist/${{ matrix.binary_name }}" -DestinationPath "${{ matrix.asset_name }}"
+        run: Copy-Item "dist/${{ matrix.binary_name }}" -Destination "${{ matrix.asset_name }}"
 
       - name: Attach to release
         uses: softprops/action-gh-release@v2
