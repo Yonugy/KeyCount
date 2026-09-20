@@ -19,10 +19,18 @@ type OS = "mac" | "windows";
 // own note on it) -- the Windows tab used to flag that gap here; now its
 // steps mirror the macOS tab's, pywin32 in place of pyobjc-framework-
 // Quartz.
+//
+// Windows ships as a bare .exe, not a .zip, as of 2026-09-20 (direct
+// request: "straight download exe instead of downloading zip and then
+// need extract to run") -- release.yml renames the PyInstaller binary
+// straight to this asset name rather than zipping it, since Windows
+// doesn't need the zip step macOS does (that one's there to preserve the
+// executable bit through download, which .exe doesn't need). One less
+// step between downloading and running it.
 const RELEASE_BASE = "https://github.com/Yonugy/KeyCount/releases/latest/download";
 const ASSET_NAMES: Record<OS, string> = {
   mac: "keycount-agent-mac.zip",
-  windows: "keycount-agent-windows.zip",
+  windows: "keycount-agent-windows.exe",
 };
 
 export default function DownloadPage() {
@@ -131,6 +139,9 @@ export default function DownloadPage() {
           </a>
         </div>
         <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "-12px 0 24px", lineHeight: 1.5 }}>
+          {os === "mac"
+            ? "Unzip it, then run the app inside."
+            : "Downloads ready to run, no extracting needed."}{" "}
           Unsigned build, not notarized/code-signed yet -- your OS will
           likely warn before opening it the first time. If nothing's been
           released yet, that link 404s; use "Run from source" below

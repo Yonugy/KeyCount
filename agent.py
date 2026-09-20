@@ -31,6 +31,7 @@ import argparse
 import getpass
 import json
 import ntpath
+import os
 import platform
 import re
 import secrets
@@ -53,16 +54,54 @@ except ImportError:
 
 # --- config -----------------------------------------------------------
 
-# Where the agent lives, for the DB file to sit next to. Not simply
-# Path(__file__).parent -- under a PyInstaller onefile build (sys.frozen),
-# __file__ points into a fresh temp extraction folder that gets deleted
-# when the process exits, so a DB there would silently reset on every
-# run. sys.executable is the actual binary's stable path in that case;
-# __file__ stays correct for running the script directly from source.
-if getattr(sys, "frozen", False):
-    _APP_DIR = Path(sys.executable).parent
-else:
-    _APP_DIR = Path(__file__).parent
+# Where the agent's keycount.db lives.
+#
+# Used to be "next to wherever the app happens to be" (Path(__file__).parent
+# when run from source, Path(sys.executable).parent under a PyInstaller
+# onefile build -- see git history for that version's own reasoning about
+# __file__ landing in the temp _MEI extraction folder otherwise). That
+# turned out to still be fragile in practice (2026-09-20, direct report:
+# "the count will restart" every run) -- __file__ vs sys.executable is a
+# real distinction, but it only matters when the packaged .exe/.zip is
+# unpacked from GitHub Actions using an *older* commit than whatever's on
+# main, which is exactly what happened here: the sys.executable fix landed
+# after v0.1.0 was already tagged and built, so the binary people actually
+# downloaded was still running the __file__ version. Tying the DB's
+# location to wherever the binary happens to sit is what made that kind of
+# mismatch possible to hit at all, and it has the same problem the other
+# direction too -- move, rename, or re-download the .exe into a different
+# folder and your history looks like it "reset," even with a correct
+# build.
+#
+# Fixed properly now by using each OS's own standard per-user app-data
+# folder instead, the same place any other desktop app's local database
+# would live, completely independent of where the binary itself sits:
+#   Windows -- %LOCALAPPDATA%\KeyCount (machine-local cache/data, not the
+#     roaming %APPDATA% -- this is high-volume per-minute telemetry, not
+#     small synced settings)
+#   macOS   -- ~/Library/Application Support/KeyCount, the standard
+#     per-user app-data location
+#   anything else (Linux, running from source with neither env var set)
+#     -- XDG_DATA_HOME if set, else ~/.local/share/KeyCount
+def _app_data_dir() -> Path:
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA")
+    elif sys.platform == "darwin":
+        base = str(Path.home() / "Library" / "Application Support")
+    else:
+        base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    if base:
+        return Path(base) / "KeyCount"
+    # Env var missing/empty (unusual, but seen on some minimal setups) --
+    # fall back to the old next-to-the-binary behavior rather than
+    # crashing outright.
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).parent
+
+
+_APP_DIR = _app_data_dir()
+_APP_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = _APP_DIR / "keycount.db"
 FLUSH_INTERVAL_S = 60          # roll the in-memory bucket to disk every minute
 PRINT_INTERVAL_S = 5           # refresh the terminal "today" count this often
