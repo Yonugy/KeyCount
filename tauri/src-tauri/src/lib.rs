@@ -21,6 +21,7 @@ use tracker::{now_secs, Tracker};
 
 const SYNC_INTERVAL: Duration = Duration::from_secs(60);
 const SYNC_BATCH: i64 = 500;
+const DASHBOARD_URL: &str = "https://key-count.vercel.app/app";
 
 #[derive(Default, Clone)]
 struct SyncInfo {
@@ -99,7 +100,7 @@ fn get_status(app: AppHandle, state: State<'_, AppState>) -> Value {
         "active": today.active,
         "hook": hook,
         "registered": state.store.get_setting("device_token").map(|t| !t.is_empty()).unwrap_or(false),
-        "backend_url": backend_url(&state.store),
+        "dashboard_url": DASHBOARD_URL,
         "account": state.store.get_setting("account_name").filter(|n| !n.is_empty()),
         "last_sync": { "at": sync_info.at, "synced": sync_info.synced, "error": sync_info.error },
         "keys_error": keys_error,
@@ -117,9 +118,8 @@ fn register(
     email: String,
     password: String,
     username: Option<String>,
-    backend_url: String,
 ) -> Result<String, String> {
-    let msg = sync::register_device(&state.store, &backend_url, has_account, email.trim(), &password, username.as_deref())?;
+    let msg = sync::register_device(&state.store, &backend_url(&state.store), has_account, email.trim(), &password, username.as_deref())?;
     run_sync(&state);
     Ok(msg)
 }
@@ -140,6 +140,12 @@ fn sign_out(state: State<'_, AppState>) -> Result<(), String> {
         *g = SyncInfo::default();
     }
     Ok(())
+}
+
+#[tauri::command]
+fn open_dashboard(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener().open_url(DASHBOARD_URL, None::<&str>).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -251,9 +257,10 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .manage(state)
-        .invoke_handler(tauri::generate_handler![get_status, register, sync_now, sign_out, set_autostart])
+        .invoke_handler(tauri::generate_handler![get_status, register, sync_now, sign_out, open_dashboard, set_autostart])
         .setup(move |app| {
             let show = MenuItem::with_id(app, "show", "Open KeyCount", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;

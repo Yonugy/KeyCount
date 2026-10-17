@@ -1,4 +1,8 @@
-name: Release agent binaries
+name: Release agent binaries (Python, retired)
+
+# RETIRED: the Python agent is no longer released. Releases now come from
+# release-tauri.yml, which also fires on v* tags. This file is kept as
+# manual-only so the old build can still be run by hand if ever needed.
 
 # Builds the KeyCount agent (agent.py) into a standalone binary for macOS
 # and Windows and attaches both to a GitHub Release, triggered by pushing
@@ -21,9 +25,7 @@ name: Release agent binaries
 # (DownloadPage.tsx only has macOS/Windows tabs), "run from source"
 # stays the only path there.
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write

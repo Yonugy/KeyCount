@@ -113,22 +113,13 @@ export default function KeysView() {
       <div style={{ maxWidth: 440 }}>
         <p style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.6, margin: "0 0 12px" }}>
           Per-key stats never leave your computer, so this tab talks
-          directly to the KeyCount agent running on <em>this</em> machine
-          -- not the backend. Get this device's access code by running:
+          directly to the KeyCount app running on <em>this</em> computer
+          -- not the backend.
         </p>
-        <pre
-          style={{
-            background: "var(--surface-1)",
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            padding: "10px 12px",
-            fontSize: 13,
-            color: "var(--text-primary)",
-            margin: "0 0 16px",
-          }}
-        >
-          python3 agent.py --show-local-token
-        </pre>
+        <p style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.6, margin: "0 0 16px" }}>
+          To connect, open the KeyCount app, copy the code under
+          {" "}<strong>Dashboard access code</strong>, and paste it below.
+        </p>
         <form onSubmit={handleConnect} style={{ display: "flex", gap: 8 }}>
           <input
             type="password"
@@ -359,18 +350,18 @@ function LocalApiErrorNotice({ error, onForget }: { error: LocalApiError | null;
   if (error?.kind === "unreachable") {
     return (
       <div style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6 }}>
-        Couldn't reach a local KeyCount agent on this device. This tab only
-        works while <code>python3 agent.py</code> is running on the same
-        computer you're viewing this from -- it won't show another
-        device's stats, on purpose.
+        Couldn't reach the KeyCount app on this device. This tab only
+        works while the KeyCount app is running on the same computer
+        you're viewing this from -- it won't show another device's stats,
+        on purpose.
       </div>
     );
   }
   if (error?.kind === "unauthorized") {
     return (
       <div style={{ color: "#e34948", fontSize: 14, lineHeight: 1.6 }}>
-        That code doesn't match this device's agent. Double-check it with{" "}
-        <code>python3 agent.py --show-local-token</code>, or{" "}
+        That code doesn't match this device's KeyCount app. Copy it again
+        from the app's Dashboard access code section, or{" "}
         <button
           onClick={onForget}
           style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", padding: 0, fontSize: 14 }}

@@ -50,6 +50,8 @@
   .switchmode{text-align:center;color:var(--mute);margin:14px 0 4px;font-size:13px}
   details.adv{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
   details.adv summary{cursor:pointer;color:var(--mute);font-size:12px}
+  .dashbtns{margin-top:12px}
+  button.quiet{background:none;color:var(--mute)}
   [hidden]{display:none!important}
 </style>
 </head>
@@ -70,32 +72,9 @@
     <p class="small" style="margin:10px 0 0"><span id="hookDot" class="dot"></span><span id="hookText">Starting</span></p>
   </section>
 
-  <section class="card" id="accountCard">
-    <!-- signed in -->
-    <div id="signedIn" hidden>
-      <h2>Account</h2>
-      <p class="who"><span class="dot good"></span>Signed in as <strong id="whoName"></strong></p>
-      <p class="small" style="margin:4px 0 12px">Syncing to <code id="backendShown"></code></p>
-      <div class="row between">
-        <span class="small" id="lastSync">Not synced yet</span>
-        <button id="syncBtn">Sync now</button>
-      </div>
-      <div class="divider"></div>
-      <div id="signOutAsk" class="row between">
-        <span class="small">Stops syncing. Counts stay on this computer.</span>
-        <button id="signOutBtn">Sign out</button>
-      </div>
-      <div id="signOutConfirm" class="row between" hidden>
-        <span class="small">Sign out of this device?</span>
-        <span class="row">
-          <button id="signOutNo">Cancel</button>
-          <button id="signOutYes" class="danger">Sign out</button>
-        </span>
-      </div>
-    </div>
-
-    <!-- signed out -->
-    <form id="form" autocomplete="off" hidden>
+  <!-- Signed out: sign in is the one thing to do, so it comes right after the counts -->
+  <section class="card" id="signInCard" hidden>
+    <form id="form" autocomplete="off">
       <h3 id="formTitle">Sign in</h3>
       <p class="small" id="formSub" style="margin:0 0 6px">Sync your counts to your KeyCount dashboard.</p>
       <div id="userWrap" hidden>
@@ -109,17 +88,25 @@
       <button class="primary wide" id="submit" type="submit">Sign in</button>
       <div id="formMsg" class="msg" hidden></div>
       <p class="switchmode"><span id="switchText">New to KeyCount?</span> <button type="button" class="link" id="switchBtn">Create an account</button></p>
-      <details class="adv">
-        <summary>Server settings</summary>
-        <label for="backend">Backend URL</label>
-        <input type="text" id="backend">
-      </details>
     </form>
   </section>
 
+  <!-- Signed in: sync state and the way to the dashboard -->
+  <section class="card" id="syncCard" hidden>
+    <h2>Sync</h2>
+    <div class="row between">
+      <span class="small" id="lastSync">Not synced yet</span>
+      <button id="syncBtn">Sync now</button>
+    </div>
+    <div class="row dashbtns">
+      <button class="primary" id="dashOpen">Open dashboard</button>
+      <button id="dashCopy">Copy link</button>
+    </div>
+  </section>
+
   <section class="card">
-    <h2>Dashboard link</h2>
-    <p class="small" style="margin:0 0 8px">Paste this access code in the dashboard's Keys page to see per-key counts from this computer.</p>
+    <h2>Dashboard access code</h2>
+    <p class="small" style="margin:0 0 8px">Paste this code in the dashboard's Keys page to see per-key counts from this computer.</p>
     <div class="row">
       <code id="code"></code>
       <button id="copy">Copy</button>
@@ -138,6 +125,22 @@
     <p class="small" style="margin:8px 0 0">Closing this window keeps counting in the tray. Use the tray icon, then Quit, to stop.</p>
   </section>
 
+  <!-- Signed in: least used, so it sits at the very bottom -->
+  <section class="card" id="accountCard" hidden>
+    <h2>Account</h2>
+    <div id="signOutAsk" class="row between">
+      <span class="small">Signed in as <strong id="whoName"></strong></span>
+      <button id="signOutBtn" class="quiet">Sign out</button>
+    </div>
+    <div id="signOutConfirm" class="row between" hidden>
+      <span class="small">Sign out? Syncing stops, counts stay here.</span>
+      <span class="row">
+        <button id="signOutNo">Cancel</button>
+        <button id="signOutYes" class="danger">Sign out</button>
+      </span>
+    </div>
+  </section>
+
   <p class="small">Data file: <code id="db"></code></p>
 </main>
 
@@ -145,7 +148,7 @@
 (function () {
   var invoke = window.__TAURI__ && window.__TAURI__.core ? window.__TAURI__.core.invoke : null;
   var $ = function (id) { return document.getElementById(id); };
-  var hasAccount = true, formTouched = false;
+  var hasAccount = true;
 
   function fmt(n) { return Number(n || 0).toLocaleString(); }
   function ago(ts) {
@@ -166,13 +169,13 @@
     $("keys").textContent = fmt(s.keystrokes);
     $("clicks").textContent = fmt(s.clicks);
     $("code").textContent = s.access_code;
+    dashboardUrl = s.dashboard_url || "";
     $("db").textContent = s.db_path;
-    $("backendShown").textContent = s.backend_url;
     $("whoName").textContent = s.account || "your account";
     $("lastSync").textContent = s.last_sync.error ? "Last sync failed: " + s.last_sync.error : ago(s.last_sync.at);
-    $("signedIn").hidden = !s.registered;
-    $("form").hidden = s.registered;
-    if (!formTouched) $("backend").value = s.backend_url;
+    $("signInCard").hidden = s.registered;
+    $("syncCard").hidden = !s.registered;
+    $("accountCard").hidden = !s.registered;
     $("autostart").checked = !!s.autostart;
 
     var h = s.hook || {}, dot = $("hookDot"), txt = $("hookText"), ban = $("hookBanner");
@@ -211,7 +214,6 @@
     $("formMsg").hidden = true;
   }
   $("switchBtn").onclick = function () { setMode(!hasAccount); };
-  $("backend").addEventListener("input", function () { formTouched = true; });
 
   function msg(el, text, ok) { el.hidden = false; el.className = "msg " + (ok ? "ok" : "err"); el.textContent = text; }
 
@@ -224,11 +226,9 @@
       hasAccount: hasAccount,
       email: $("email").value,
       password: $("password").value,
-      username: hasAccount ? null : $("username").value,
-      backendUrl: $("backend").value
+      username: hasAccount ? null : $("username").value
     }).then(function (text) {
       $("password").value = "";
-      formTouched = false;
       msg(m, text, true);
       refresh();
     }).catch(function (err) { msg(m, String(err), false); })
@@ -245,6 +245,28 @@
       setMode(true);
       refresh();
     }).catch(function (err) { $("hookText").textContent = String(err); });
+  };
+
+  function copyText(t, done) {
+    var fallback = function () {
+      var ta = document.createElement("textarea");
+      ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try { if (document.execCommand("copy")) done(); } catch (e) {}
+      document.body.removeChild(ta);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done, fallback);
+    else fallback();
+  }
+  var dashboardUrl = "";
+  $("dashOpen").onclick = function () { invoke("open_dashboard"); };
+  $("dashCopy").onclick = function () {
+    var b = this;
+    if (!dashboardUrl) return;
+    copyText(dashboardUrl, function () {
+      b.textContent = "Copied";
+      setTimeout(function () { b.textContent = "Copy link"; }, 1500);
+    });
   };
 
   $("syncBtn").onclick = function () {

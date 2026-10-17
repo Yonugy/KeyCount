@@ -26,4 +26,4 @@ It reads and writes the same database as the Python agent (`agent.py`), so an ex
 
 Layout: `src-tauri/src/` holds the Rust code (`tracker`, `store`, `sync`, `keys_server`, `hooks/` for the per-OS listeners, `appdetect`), and `src/index.html` is the whole window UI.
 
-Releases are built by `.github/workflows/release-tauri.yml` when a `tauri-v*` tag is pushed.
+Releases are built by `.github/workflows/release-tauri.yml` when a `v*` tag is pushed, producing `KeyCount_vX.Y.Z.exe` and `KeyCount_vX.Y.Z.dmg`.

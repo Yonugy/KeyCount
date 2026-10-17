@@ -292,7 +292,7 @@ all. Per-key counts are local-only by design (see the "Privacy decision"
 section in `../ROADMAP.md`), so instead the browser fetches directly from
 a tiny server `agent.py` runs on `http://localhost:8787`, bound to this
 same machine only. The first time you open this tab you'll need to paste
-in an access code -- get it with `python3 ../agent.py --show-local-token`
+in an access code -- copy it from the KeyCount app's "Dashboard access code" section (or run `python3 ../agent.py --show-local-token` for the Python agent)
 -- after that it's remembered in your browser. If you open the dashboard
 on a machine with no agent running, this tab just shows nothing to fetch,
 by design.

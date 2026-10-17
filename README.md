@@ -139,25 +139,27 @@ work, and open the dashboard whenever you want to look at it.
 
 ## Get a packaged build
 
-Prebuilt macOS and Windows binaries of the **Python agent** are published
-on the [GitHub Releases page](https://github.com/Yonugy/KeyCount/releases),
-and linked from the website's `/download` page
-(`web/src/components/DownloadPage.tsx`). Built by
-`.github/workflows/release.yml` from `keycount-agent.spec` (PyInstaller)
-whenever a `v*` tag is pushed — no Python install needed, just download
-and run. They're unsigned/not notarized, so your OS will warn before
-opening one the first time.
+Installers are built by `.github/workflows/release-tauri.yml` whenever a
+version tag is pushed:
 
-No packaged Linux build for the Python agent — running from source
-(below) is the only path there for now.
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
 
-The **Tauri agent** is built by `.github/workflows/release-tauri.yml`
-whenever a `tauri-v*` tag is pushed (or run manually from the Actions
-tab). It produces Windows and macOS (Apple silicon and Intel) installers
-and attaches them to a pre-release on the Releases page, so it never
-replaces the "latest" Python agent downloads. To build locally instead,
-use `cargo tauri build` (installers land in
-`tauri/src-tauri/target/release/bundle/`).
+It attaches `KeyCount_v0.2.0.exe` (Windows) and `KeyCount_v0.2.0.dmg`
+(macOS, Apple silicon and Intel) to a pre-release on the
+[Releases page](https://github.com/Yonugy/KeyCount/releases). Untick
+"pre-release" on GitHub once it has been tested to make it the latest
+release. You can also run the workflow by hand from the Actions tab,
+which builds the installers without creating a release.
+
+The installers are unsigned and not notarized, so Windows SmartScreen or
+macOS Gatekeeper will warn before opening one the first time.
+
+The Python agent is no longer released. Its old workflow
+(`.github/workflows/release.yml`) is manual-only. To build locally
+instead, use `cargo tauri build` from `tauri/src-tauri/`.
 
 ## Requirements
 
