@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { getToken } from "../api";
 import { playKeySound } from "../lib/clickSound";
 import PublicNav from "./PublicNav";
+import PublicFooter from "./PublicFooter";
 import Starfield from "./Starfield";
 import ArcadeButton from "./ArcadeButton";
 import SoundToggle from "./SoundToggle";
@@ -253,9 +254,10 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <footer style={{ borderTop: "1px solid rgba(255,255,255,0.1)", padding: "20px 32px", textAlign: "center" }}>
+        {/* <footer style={{ borderTop: "1px solid rgba(255,255,255,0.1)", padding: "20px 32px", textAlign: "center" }}>
           <span style={{ color: "rgba(255,255,255,0.55)", fontSize: 12 }}>KeyCount</span>
-        </footer>
+        </footer> */}
+        <PublicFooter variant="dark" />
       </div>
     </div>
   );

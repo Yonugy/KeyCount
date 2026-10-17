@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { getUsername, clearSession } from "../api";
 import TodayView from "./TodayView";
 import HistoryView from "./HistoryView";
@@ -53,7 +53,12 @@ export default function Dashboard() {
         }}
       >
         <div>
-          <h1 style={{ fontSize: 20, margin: 0 }}>KeyCount</h1>
+          {/* The name doubles as a link back to the landing page. */}
+          <h1 style={{ fontSize: 20, margin: 0 }}>
+            <Link to="/" style={{ color: "inherit", textDecoration: "none" }}>
+              KeyCount
+            </Link>
+          </h1>
           <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
             Signed in as {username}
           </div>
@@ -66,6 +71,20 @@ export default function Dashboard() {
               for it. "subtle" variant matches the Sign out button's own
               styling instead of the hero's fixed-dark-background look. */}
           <SoundToggle variant="subtle" />
+          <button
+            onClick={() => navigate("/")}
+            style={{
+              background: "none",
+              border: "1px solid var(--border)",
+              borderRadius: 6,
+              padding: "6px 12px",
+              color: "var(--text-secondary)",
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            Home
+          </button>
           <button
             onClick={handleLogout}
             style={{

@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes, useParams } from "react-router-dom";
+import { useEffect } from "react";
+import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import Dashboard from "./components/Dashboard";
 import RequireAuth from "./components/RequireAuth";
 import LoginRoute from "./components/LoginRoute";
@@ -25,6 +26,7 @@ import GlobalClickSound from "./components/GlobalClickSound";
 export default function App() {
   return (
     <>
+      <ScrollToTop />
       {/* Mounted once, outside Routes, so it's present on every page
           including Login and the signed-in Dashboard -- see
           GlobalClickSound.tsx for the scope/dedupe reasoning. */}
@@ -47,6 +49,18 @@ export default function App() {
       </Routes>
     </>
   );
+}
+
+// Moving between routes in this single-page app swaps components without a
+// real page load, so the browser keeps the old scroll position (clicking
+// Features or Download from the footer left you at the bottom of the new
+// page). Jump back to the top whenever the path changes.
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
 }
 
 // /u/:username is reachable with nobody signed in (see PublicProfilePage's

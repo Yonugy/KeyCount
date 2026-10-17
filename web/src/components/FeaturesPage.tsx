@@ -1,4 +1,5 @@
 import PublicNav from "./PublicNav";
+import PublicFooter from "./PublicFooter";
 
 // Specs page (2026-09-13 phase 2). Content here is pulled from the root
 // README and the design doc, not invented -- see each section's grouping
@@ -7,10 +8,10 @@ import PublicNav from "./PublicNav";
 // they're describing the same underlying behavior from two angles.
 export default function FeaturesPage() {
   return (
-    <div style={{ minHeight: "100vh" }}>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <PublicNav />
 
-      <main style={{ maxWidth: 760, margin: "0 auto", padding: "24px 32px 64px" }}>
+      <main style={{ maxWidth: 824, width: "100%", boxSizing: "border-box", alignSelf: "center", padding: "24px 32px 64px" }}>
         <h1 style={{ fontSize: 30, margin: "0 0 12px", color: "var(--text-primary)" }}>
           What KeyCount does
         </h1>
@@ -74,6 +75,8 @@ export default function FeaturesPage() {
           />
         </FeatureSection>
       </main>
+
+      <PublicFooter />
     </div>
   );
 }

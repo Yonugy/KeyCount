@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import PublicNav from "./PublicNav";
+import PublicFooter from "./PublicFooter";
 import { playPressSound, playReleaseSound, playCtaHoverSound } from "../lib/clickSound";
 
 type OS = "mac" | "windows";
@@ -81,10 +82,10 @@ export default function DownloadPage() {
   }, []);
 
   return (
-    <div style={{ minHeight: "100vh" }}>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <PublicNav />
 
-      <main style={{ maxWidth: 760, margin: "0 auto", padding: "24px 32px 64px" }}>
+      <main style={{ maxWidth: 824, width: "100%", boxSizing: "border-box", alignSelf: "center", padding: "24px 32px 64px" }}>
         <h1 style={{ fontSize: 30, margin: "0 0 36px", color: "var(--text-primary)" }}>
           Download
         </h1>
@@ -149,6 +150,8 @@ export default function DownloadPage() {
         </details>
         */}
       </main>
+
+      <PublicFooter />
     </div>
   );
 }
