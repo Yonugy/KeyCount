@@ -1,0 +1,56 @@
+# Run it by pushing a tag that starts with tauri-v, for example: git tag tauri-v0.1.0 && git push origin tauri-v0.1.0
+name: release-tauri
+
+on:
+  push:
+    tags: ["tauri-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: ""
+          - os: macos-latest
+            target: "aarch64-apple-darwin"
+          - os: macos-15-intel
+            target: "x86_64-apple-darwin"
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/src-tauri
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Run tests
+        working-directory: tauri/src-tauri
+        run: cargo test --lib
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: tauri
+          tauriScript: cargo tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: "KeyCount Tauri ${{ github.ref_name }}"
+          releaseDraft: false
+          prerelease: true
+          args: ${{ matrix.target != '' && format('--target {0}', matrix.target) || '' }}

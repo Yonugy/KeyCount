@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KeyCount</title>
+<style>
+  :root{--bg:#0f1218;--card:#181d27;--line:#262d3b;--text:#e8ecf3;--mute:#8a94a7;--accent:#5eead4;--warn:#fbbf24;--bad:#f87171;--good:#4ade80}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+  main{padding:18px 18px 28px;max-width:520px;margin:0 auto}
+  h1{font-size:18px;margin:0 0 2px}
+  .sub{color:var(--mute);margin:0 0 16px;font-size:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+  .card h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);margin:0 0 10px;font-weight:600}
+  .big{display:flex;gap:12px}
+  .big div{flex:1}
+  .num{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums}
+  .lbl{color:var(--mute);font-size:12px}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--mute)}
+  .dot.good{background:var(--good)} .dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)}
+  .banner{border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px;border:1px solid}
+  .banner.warn{background:#2a2412;border-color:#5a4a16;color:#f6d77a}
+  .banner.bad{background:#2a1517;border-color:#5a2227;color:#f7a3a3}
+  .banner[hidden]{display:none}
+  label{display:block;color:var(--mute);font-size:12px;margin:8px 0 3px}
+  input[type=text],input[type=email],input[type=password]{width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:#0f1218;color:var(--text);font:inherit}
+  input:focus{outline:2px solid var(--accent);outline-offset:-1px}
+  button{font:inherit;border:1px solid var(--line);background:#202736;color:var(--text);padding:7px 12px;border-radius:8px;cursor:pointer}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);color:#06201c;border-color:var(--accent);font-weight:600}
+  button:disabled{opacity:.5;cursor:default}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .row.between{justify-content:space-between}
+  .tabs{display:flex;gap:6px;margin-bottom:6px}
+  .tabs button.on{border-color:var(--accent);color:var(--accent)}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:#0f1218;border:1px solid var(--line);padding:2px 6px;border-radius:6px;word-break:break-all}
+  .msg{margin-top:8px;font-size:13px}
+  .msg.ok{color:var(--good)} .msg.err{color:var(--bad)}
+  .small{font-size:12px;color:var(--mute)}
+  .switch{display:flex;gap:8px;align-items:center}
+  h3{font-size:18px;margin:0 0 2px}
+  .who{margin:0;font-size:15px}
+  .divider{height:1px;background:var(--line);margin:14px 0 12px}
+  button.wide{width:100%;margin-top:14px;padding:9px 12px}
+  button.danger{border-color:#5a2227;color:var(--bad)}
+  button.danger:hover{border-color:var(--bad)}
+  button.link{border:0;background:none;padding:0;color:var(--accent);cursor:pointer}
+  button.link:hover{text-decoration:underline}
+  .switchmode{text-align:center;color:var(--mute);margin:14px 0 4px;font-size:13px}
+  details.adv{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+  details.adv summary{cursor:pointer;color:var(--mute);font-size:12px}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <h1>KeyCount</h1>
+  <p class="sub">Counts keys and clicks, never what you type. <span id="ver"></span></p>
+
+  <div id="hookBanner" class="banner warn" hidden></div>
+  <div id="portBanner" class="banner warn" hidden></div>
+
+  <section class="card">
+    <h2>Today</h2>
+    <div class="big">
+      <div><div class="num" id="keys">0</div><div class="lbl">keystrokes</div></div>
+      <div><div class="num" id="clicks">0</div><div class="lbl">clicks</div></div>
+    </div>
+    <p class="small" style="margin:10px 0 0"><span id="hookDot" class="dot"></span><span id="hookText">Starting</span></p>
+  </section>
+
+  <section class="card" id="accountCard">
+    <!-- signed in -->
+    <div id="signedIn" hidden>
+      <h2>Account</h2>
+      <p class="who"><span class="dot good"></span>Signed in as <strong id="whoName"></strong></p>
+      <p class="small" style="margin:4px 0 12px">Syncing to <code id="backendShown"></code></p>
+      <div class="row between">
+        <span class="small" id="lastSync">Not synced yet</span>
+        <button id="syncBtn">Sync now</button>
+      </div>
+      <div class="divider"></div>
+      <div id="signOutAsk" class="row between">
+        <span class="small">Stops syncing. Counts stay on this computer.</span>
+        <button id="signOutBtn">Sign out</button>
+      </div>
+      <div id="signOutConfirm" class="row between" hidden>
+        <span class="small">Sign out of this device?</span>
+        <span class="row">
+          <button id="signOutNo">Cancel</button>
+          <button id="signOutYes" class="danger">Sign out</button>
+        </span>
+      </div>
+    </div>
+
+    <!-- signed out -->
+    <form id="form" autocomplete="off" hidden>
+      <h3 id="formTitle">Sign in</h3>
+      <p class="small" id="formSub" style="margin:0 0 6px">Sync your counts to your KeyCount dashboard.</p>
+      <div id="userWrap" hidden>
+        <label for="username">Username</label>
+        <input type="text" id="username">
+      </div>
+      <label for="email">Email</label>
+      <input type="email" id="email">
+      <label for="password">Password</label>
+      <input type="password" id="password">
+      <button class="primary wide" id="submit" type="submit">Sign in</button>
+      <div id="formMsg" class="msg" hidden></div>
+      <p class="switchmode"><span id="switchText">New to KeyCount?</span> <button type="button" class="link" id="switchBtn">Create an account</button></p>
+      <details class="adv">
+        <summary>Server settings</summary>
+        <label for="backend">Backend URL</label>
+        <input type="text" id="backend">
+      </details>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Dashboard link</h2>
+    <p class="small" style="margin:0 0 8px">Paste this access code in the dashboard's Keys page to see per-key counts from this computer.</p>
+    <div class="row">
+      <code id="code"></code>
+      <button id="copy">Copy</button>
+    </div>
+    <div id="copyMsg" class="msg ok" hidden>Copied.</div>
+  </section>
+
+  <section class="card">
+    <h2>Settings</h2>
+    <label class="switch" style="margin:0 0 8px;color:var(--text);font-size:14px">
+      <input type="checkbox" id="autostart"> Start KeyCount when I sign in to this computer
+    </label>
+    <label class="switch" style="margin:0;color:var(--text);font-size:14px">
+      <input type="checkbox" id="sound"> Mute click sounds
+    </label>
+    <p class="small" style="margin:8px 0 0">Closing this window keeps counting in the tray. Use the tray icon, then Quit, to stop.</p>
+  </section>
+
+  <p class="small">Data file: <code id="db"></code></p>
+</main>
+
+<script>
+(function () {
+  var invoke = window.__TAURI__ && window.__TAURI__.core ? window.__TAURI__.core.invoke : null;
+  var $ = function (id) { return document.getElementById(id); };
+  var hasAccount = true, formTouched = false;
+
+  function fmt(n) { return Number(n || 0).toLocaleString(); }
+  function ago(ts) {
+    if (!ts) return "Not synced yet";
+    var s = Math.max(0, Math.round(Date.now() / 1000 - ts));
+    if (s < 5) return "Synced just now";
+    if (s < 90) return "Synced " + s + "s ago";
+    return "Synced " + Math.round(s / 60) + " min ago";
+  }
+  function permissionHelp(os) {
+    if (os === "macos") return "KeyCount needs Input Monitoring. Open System Settings, Privacy & Security, Input Monitoring, switch KeyCount on, then quit KeyCount from the tray and open it again.";
+    if (os === "windows") return "Windows blocked the input listener. If you use security software, allow KeyCount, then reopen it.";
+    return "Input tracking is not available on this system.";
+  }
+
+  function render(s) {
+    $("ver").textContent = "v" + s.version;
+    $("keys").textContent = fmt(s.keystrokes);
+    $("clicks").textContent = fmt(s.clicks);
+    $("code").textContent = s.access_code;
+    $("db").textContent = s.db_path;
+    $("backendShown").textContent = s.backend_url;
+    $("whoName").textContent = s.account || "your account";
+    $("lastSync").textContent = s.last_sync.error ? "Last sync failed: " + s.last_sync.error : ago(s.last_sync.at);
+    $("signedIn").hidden = !s.registered;
+    $("form").hidden = s.registered;
+    if (!formTouched) $("backend").value = s.backend_url;
+    $("autostart").checked = !!s.autostart;
+
+    var h = s.hook || {}, dot = $("hookDot"), txt = $("hookText"), ban = $("hookBanner");
+    ban.hidden = true; dot.className = "dot";
+    if (h.state === "running") {
+      dot.classList.add("good");
+      txt.textContent = s.active ? "Counting, you are active" : "Counting, idle";
+    } else if (h.state === "starting") {
+      txt.textContent = "Starting input tracking";
+    } else if (h.state === "needs_permission") {
+      dot.classList.add("bad"); txt.textContent = "Not counting yet";
+      ban.className = "banner warn"; ban.textContent = h.message || permissionHelp(s.os); ban.hidden = false;
+    } else {
+      dot.classList.add("bad"); txt.textContent = "Not counting";
+      ban.className = "banner bad"; ban.textContent = h.message || permissionHelp(s.os); ban.hidden = false;
+    }
+
+    var pb = $("portBanner");
+    pb.hidden = !s.keys_error;
+    if (s.keys_error) pb.textContent = "The dashboard link is off: " + s.keys_error + ". Close any other KeyCount agent, then reopen this app.";
+  }
+
+  function refresh() {
+    if (!invoke) { $("hookText").textContent = "Run this inside the KeyCount app."; return; }
+    invoke("get_status").then(render).catch(function (e) { $("hookText").textContent = String(e); });
+  }
+
+  function setMode(login) {
+    hasAccount = login;
+    $("formTitle").textContent = login ? "Sign in" : "Create account";
+    $("formSub").textContent = login ? "Sync your counts to your KeyCount dashboard." : "Make a KeyCount account and link this computer to it.";
+    $("userWrap").hidden = login;
+    $("submit").textContent = login ? "Sign in" : "Create account";
+    $("switchText").textContent = login ? "New to KeyCount?" : "Already have an account?";
+    $("switchBtn").textContent = login ? "Create an account" : "Sign in";
+    $("formMsg").hidden = true;
+  }
+  $("switchBtn").onclick = function () { setMode(!hasAccount); };
+  $("backend").addEventListener("input", function () { formTouched = true; });
+
+  function msg(el, text, ok) { el.hidden = false; el.className = "msg " + (ok ? "ok" : "err"); el.textContent = text; }
+
+  $("form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var m = $("formMsg"), btn = $("submit");
+    if (!$("email").value || !$("password").value) { msg(m, "Enter your email and password.", false); return; }
+    btn.disabled = true; msg(m, "Working...", true);
+    invoke("register", {
+      hasAccount: hasAccount,
+      email: $("email").value,
+      password: $("password").value,
+      username: hasAccount ? null : $("username").value,
+      backendUrl: $("backend").value
+    }).then(function (text) {
+      $("password").value = "";
+      formTouched = false;
+      msg(m, text, true);
+      refresh();
+    }).catch(function (err) { msg(m, String(err), false); })
+      .then(function () { btn.disabled = false; });
+  });
+
+  function askSignOut(on) { $("signOutAsk").hidden = on; $("signOutConfirm").hidden = !on; }
+  $("signOutBtn").onclick = function () { askSignOut(true); };
+  $("signOutNo").onclick = function () { askSignOut(false); };
+  $("signOutYes").onclick = function () {
+    invoke("sign_out").then(function () {
+      askSignOut(false);
+      $("email").value = ""; $("password").value = ""; $("username").value = "";
+      setMode(true);
+      refresh();
+    }).catch(function (err) { $("hookText").textContent = String(err); });
+  };
+
+  $("syncBtn").onclick = function () {
+    var b = $("syncBtn"); b.disabled = true;
+    invoke("sync_now").then(refresh).then(function () { b.disabled = false; }, function () { b.disabled = false; });
+  };
+
+  $("copy").onclick = function () {
+    var t = $("code").textContent;
+    var done = function () { $("copyMsg").hidden = false; setTimeout(function () { $("copyMsg").hidden = true; }, 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done, function () {});
+  };
+
+  $("autostart").onchange = function () {
+    var box = this, want = box.checked;
+    invoke("set_autostart", { enabled: want }).then(function (now) { box.checked = now; }, function (err) {
+      box.checked = !want; msg($("formMsg"), "Could not change startup setting: " + err, false);
+    });
+  };
+
+  // ---- Click and hover sounds -------------------------------------------
+  // Same synthesized blips as the website's dashboard (no audio files),
+  // on by default; muting is remembered in this window's local storage.
+  var MUTE_KEY = "keycount:soundMuted";
+  var audioCtx = null;
+  function soundOn() { try { return localStorage.getItem(MUTE_KEY) !== "on"; } catch (e) { return true; } }
+  function setMuted(m) { try { localStorage.setItem(MUTE_KEY, m ? "on" : "off"); } catch (e) {} }
+  function ctx() {
+    var C = window.AudioContext || window.webkitAudioContext;
+    if (!C) return null;
+    if (!audioCtx) audioCtx = new C();
+    if (audioCtx.state === "suspended") audioCtx.resume().catch(function () {});
+    return audioCtx;
+  }
+  function blip(freq, ms, peak, type) {
+    var c = ctx(); if (!c) return;
+    var osc = c.createOscillator(), gain = c.createGain(), now = c.currentTime, dur = ms / 1000;
+    osc.type = type; osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(peak, now + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    osc.connect(gain); gain.connect(c.destination);
+    osc.start(now); osc.stop(now + dur + 0.01);
+  }
+  function playClick() { if (soundOn()) blip(1100, 26, 0.15, "triangle"); }
+  function playHover() { if (soundOn()) blip(500, 18, 0.07, "sine"); }
+
+  var CLICKABLE = 'button, summary, input[type="checkbox"]';
+  function disabled(el) { return !!el.disabled || el.getAttribute("aria-disabled") === "true"; }
+  // Capture phase, so a click that hides or disables its own button
+  // (Sign out, Sync now) still plays.
+  document.addEventListener("click", function (e) {
+    var el = e.target && e.target.closest ? e.target.closest(CLICKABLE) : null;
+    if (el && !disabled(el)) playClick();
+  }, true);
+  var lastHover = null;
+  document.addEventListener("mouseover", function (e) {
+    var el = e.target && e.target.closest ? e.target.closest("button, summary") : null;
+    if (el === lastHover) return;
+    lastHover = el;
+    if (el && !disabled(el)) playHover();
+  });
+  $("sound").checked = !soundOn();
+  $("sound").onchange = function () {
+    setMuted(this.checked);
+    // The capture listener above ran while still muted, so confirm here.
+    if (!this.checked) playClick();
+  };
+
+  refresh();
+  setInterval(refresh, 1500);
+})();
+</script>
+</body>
+</html>
