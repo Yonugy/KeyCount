@@ -103,6 +103,32 @@ def _app_data_dir() -> Path:
 _APP_DIR = _app_data_dir()
 _APP_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = _APP_DIR / "keycount.db"
+
+
+def _invocation() -> str:
+    """How to tell someone to re-run this program, matching however
+    they're actually running it right now -- fixes every "run `python3
+    agent.py`" hint printing that literally even when someone's running
+    the packaged .exe (direct report 2026-09-21: "The guide is always
+    showing agent.py to write command"). Frozen -- use the real launched
+    filename (Path(sys.executable).name, not a hardcoded guess) so it's
+    still correct if someone renames the download. From source -- matches
+    DownloadPage.tsx's own per-OS instructions: python3 on macOS, python
+    on Windows (a stock Windows Python install doesn't expose python3)."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).name
+    return "python3 agent.py" if sys.platform != "win32" else "python agent.py"
+
+
+# Packaged builds are what real end users run, and they should sync to
+# the real backend without needing to know its URL -- localhost would
+# just fail silently confusing for anyone who isn't the person developing
+# this. Running from source is almost always local development instead,
+# where localhost is the right default. Same sys.frozen signal as
+# _app_data_dir() above, same reasoning: which one you're doing is a
+# reasonable proxy for which backend you mean (direct report 2026-09-21:
+# "in production, the default backend url should be the onrender url").
+DEFAULT_BACKEND_URL = "https://keycount.onrender.com" if getattr(sys, "frozen", False) else "http://localhost:8080"
 FLUSH_INTERVAL_S = 60          # roll the in-memory bucket to disk every minute
 PRINT_INTERVAL_S = 5           # refresh the terminal "today" count this often
 IDLE_THRESHOLD_S = 60          # no input for this long ends the session
@@ -296,30 +322,31 @@ def http_post_json(url, payload, token=None, timeout=10):
         return None, {"error": str(e.reason)}
 
 
-def register_with_backend(store, backend_url):
-    """Interactively sign in (or sign up) and register this machine as a
-    device, storing the resulting device_token locally so future runs can
-    sync automatically. Never stores the password."""
-    print(f"Registering with backend at {backend_url}\n")
-    has_account = input("Do you already have an account on this backend? [y/N]: ").strip().lower() == "y"
-    email = input("Email: ").strip()
-    password = getpass.getpass("Password: ")
+def _register_device(store, backend_url, has_account, email, password, username=None):
+    """Shared core of --register: sign in (or up) and register this
+    machine as a device, storing the resulting device_token locally so
+    future runs can sync automatically. Never stores the password.
 
+    Split out of register_with_backend() on 2026-09-21 so the new
+    AgentGUI's register dialog can reuse the exact same HTTP logic
+    instead of duplicating it -- a GUI can't use blocking input()/
+    getpass.getpass() for prompts or a process-killing sys.exit() for
+    errors the way the CLI flow below does, so this version takes
+    already-collected values and returns (ok, message) instead."""
     if has_account:
         status, resp = http_post_json(f"{backend_url}/v1/auth/login",
                                        {"email": email, "password": password})
     else:
-        username = input("Choose a username: ").strip()
         status, resp = http_post_json(f"{backend_url}/v1/auth/signup",
                                        {"email": email, "username": username, "password": password})
 
     if status is None:
-        sys.exit(f"Could not reach {backend_url}: {resp.get('error')}")
+        return False, f"Could not reach {backend_url}: {resp.get('error')}"
     if status not in (200, 201):
-        sys.exit(f"Login/signup failed ({status}): {resp.get('error', resp)}")
+        return False, f"Login/signup failed ({status}): {resp.get('error', resp)}"
 
     token = resp["token"]
-    print(f"Signed in as {resp.get('username')}.")
+    signed_in_as = resp.get("username")
 
     device_name = platform.node() or "unnamed device"
     status, resp = http_post_json(
@@ -328,13 +355,33 @@ def register_with_backend(store, backend_url):
         token=token,
     )
     if status != 201:
-        sys.exit(f"Device registration failed ({status}): {resp.get('error', resp)}")
+        return False, f"Device registration failed ({status}): {resp.get('error', resp)}"
 
     device_token = resp["device_token"]
     store.set_setting("backend_url", backend_url)
     store.set_setting("device_token", device_token)
-    print(f"\nRegistered device '{device_name}'. Syncing is now enabled.")
-    print("Run `python3 agent.py` normally to start tracking + syncing.")
+    return True, f"Signed in as {signed_in_as}. Registered device '{device_name}' -- syncing is now enabled."
+
+
+def register_with_backend(store, backend_url):
+    """Interactive CLI wrapper around _register_device(): prompts on the
+    terminal, then prints/exits based on the result. Never stores the
+    password itself -- it only ever lives in the local variable below,
+    for exactly as long as it takes to hand it to _register_device()."""
+    print(f"Registering with backend at {backend_url}\n")
+    has_account = input("Do you already have an account on this backend? [y/N]: ").strip().lower() == "y"
+    email = input("Email: ").strip()
+    password = getpass.getpass("Password: ")
+    username = None
+    if not has_account:
+        username = input("Choose a username: ").strip()
+
+    ok, message = _register_device(store, backend_url, has_account, email, password, username)
+    if not ok:
+        sys.exit(message)
+
+    print(message)
+    print(f"Run `{_invocation()}` normally to start tracking + syncing.")
 
 
 def sync_once(store, backend_url, device_token, limit=500):
@@ -1009,7 +1056,7 @@ class Agent:
         if self.backend_url and self.device_token:
             print(f"Syncing enabled -- backend: {self.backend_url}")
         else:
-            print("Syncing disabled -- run `python3 agent.py --register` to link this device to a backend.")
+            print(f"Syncing disabled -- run `{_invocation()} --register` to link this device to a backend.")
         print("Press Ctrl+C to stop.\n")
 
         last_flush = time.time()
@@ -1045,6 +1092,248 @@ class Agent:
                 self.print_top_keys()
 
 
+class AgentGUI:
+    """A minimal desktop window around Agent.run(), for people who'd
+    rather not use a terminal at all (2026-09-21, direct request: "i
+    wanna implement a ui or another method that is more user friendly
+    to perform some actions" -> "A real desktop app window").
+
+    Deliberately thin: Agent.run() already does the real work --
+    pynput's keyboard/mouse listeners and the local Keys-tab HTTP
+    server both already run in their own background threads (see
+    Agent.run() above), and its self._stop threading.Event is already
+    the exact clean-shutdown hook a window's close button needs. So
+    this class just runs Agent.run() on one background thread and
+    polls Agent's already-existing state (self.counts,
+    self.session_active, Store.today_totals -- the same values
+    print_today() prints to the console) on a Tk timer, instead of
+    duplicating any tracking logic.
+
+    tkinter is imported here, inside this class's own methods, not at
+    module level -- so --show-keys/--register/--sync-now/--cli and any
+    other headless use of this file never requires Tk to be installed
+    at all. Only actually entering the GUI path (see main()) touches
+    tkinter, and main() itself probes for it first and falls back to
+    the console tracker if it's missing.
+
+    Scope, deliberately: this first pass does not try to hide the
+    console window PyInstaller still opens alongside it (console=True
+    in keycount-agent.spec) -- that's a separate, riskier packaging
+    change (a hidden process still needs *some* way to surface a
+    crash) better done as its own follow-up once this window itself
+    has been confirmed to actually look and behave right on real
+    hardware. Nothing here can be visually verified from the sandbox
+    it was written in, only exercised headlessly (see the project's
+    dev notes on the xvfb-run smoke test), so the first version stays
+    small on purpose and leans on Agent.run()'s already-tested logic
+    rather than reimplementing any of it.
+    """
+
+    REFRESH_MS = 1000
+
+    def __init__(self, agent: "Agent"):
+        import tkinter as tk
+        from tkinter import ttk, messagebox
+        self._tk = tk
+        self._messagebox = messagebox
+
+        self.agent = agent
+        self._agent_thread = None
+
+        self.root = tk.Tk()
+        self.root.title("KeyCount")
+        self.root.geometry("360x300")
+        self.root.resizable(False, False)
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        pad = {"padx": 16, "pady": 8}
+
+        self.status_var = tk.StringVar(value="Starting...")
+        ttk.Label(self.root, textvariable=self.status_var,
+                  font=("Segoe UI", 11, "bold")).pack(anchor="w", **pad)
+
+        self.today_var = tk.StringVar(value="Today: -- keystrokes, -- clicks")
+        ttk.Label(self.root, textvariable=self.today_var,
+                  font=("Segoe UI", 13)).pack(anchor="w", padx=16)
+
+        self.sync_var = tk.StringVar(value="")
+        ttk.Label(self.root, textvariable=self.sync_var,
+                  foreground="#666").pack(anchor="w", padx=16, pady=(4, 0))
+
+        btns = ttk.Frame(self.root)
+        btns.pack(fill="x", padx=16, pady=(20, 8))
+        self.register_btn = ttk.Button(btns, text="Sign in / Register",
+                                        command=self._open_register_dialog)
+        self.register_btn.pack(fill="x", pady=4)
+        ttk.Button(btns, text="Copy Keys-tab access code",
+                   command=self._copy_access_code).pack(fill="x", pady=4)
+        ttk.Button(btns, text="Sync now", command=self._sync_now).pack(fill="x", pady=4)
+        ttk.Button(btns, text="Quit", command=self._on_close).pack(fill="x", pady=4)
+
+        ttk.Label(self.root, text=f"DB: {DB_PATH}", foreground="#999",
+                  font=("Segoe UI", 8), wraplength=328).pack(
+            side="bottom", anchor="w", padx=16, pady=8)
+
+        self._update_register_button_label()
+        self._refresh()
+
+    # --- lifecycle ---
+
+    def run(self):
+        self._agent_thread = threading.Thread(target=self.agent.run, daemon=True, name="agent-run")
+        self._agent_thread.start()
+        self.root.mainloop()
+
+    def _on_close(self):
+        self.status_var.set("Stopping...")
+        self.root.update_idletasks()
+        self.agent._stop.set()
+        if self._agent_thread:
+            self._agent_thread.join(timeout=5)
+        self.root.destroy()
+
+    # --- periodic refresh ---
+
+    def _refresh(self):
+        try:
+            keystrokes, clicks = self.agent.store.today_totals(self.agent._day_start(time.time()))
+            pending = self.agent.counts.get("keystrokes", 0)
+            status = "active" if self.agent.session_active else "idle"
+            self.today_var.set(f"Today: {keystrokes + pending} keystrokes, {clicks} clicks")
+            self.status_var.set(f"Tracking ({status})")
+        except Exception:
+            # A read here can race Agent.run()'s own background thread
+            # (no shared lock between them, by design -- see the class
+            # docstring), but every field touched is only ever read,
+            # never mutated, from this side, so at worst this skips one
+            # refresh tick rather than corrupting anything or crashing
+            # the window.
+            pass
+
+        if self.agent.backend_url and self.agent.device_token:
+            self.sync_var.set(f"Syncing to {self.agent.backend_url}")
+        else:
+            self.sync_var.set("Syncing disabled -- not registered")
+
+        self.root.after(self.REFRESH_MS, self._refresh)
+
+    def _update_register_button_label(self):
+        if self.agent.backend_url and self.agent.device_token:
+            self.register_btn.config(text="Re-register / change account")
+
+    # --- actions ---
+
+    def _copy_access_code(self):
+        token = get_or_create_local_token(self.agent.store)
+        self.root.clipboard_clear()
+        self.root.clipboard_append(token)
+        self._messagebox.showinfo(
+            "KeyCount",
+            "Access code copied to your clipboard.\n\n"
+            "Paste it into the dashboard's Keys tab when it asks for this "
+            "device's access code.",
+        )
+
+    def _sync_now(self):
+        if not (self.agent.backend_url and self.agent.device_token):
+            self._messagebox.showwarning("KeyCount", "Register this device with a backend first.")
+            return
+        count, error = sync_once(self.agent.store, self.agent.backend_url, self.agent.device_token)
+        if error:
+            self._messagebox.showerror("KeyCount", f"Sync failed: {error}")
+        else:
+            self._messagebox.showinfo("KeyCount", f"Synced {count} bucket(s).")
+
+    def _open_register_dialog(self):
+        tk = self._tk
+        from tkinter import ttk
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Sign in / Register")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        pad = {"padx": 12, "pady": 6}
+        has_account_var = tk.BooleanVar(value=True)
+        url_var = tk.StringVar(value=self.agent.backend_url or DEFAULT_BACKEND_URL)
+        email_var = tk.StringVar()
+        username_var = tk.StringVar()
+        password_var = tk.StringVar()
+
+        row = 0
+        ttk.Label(dialog, text="Backend URL").grid(row=row, column=0, sticky="w", **pad)
+        ttk.Entry(dialog, textvariable=url_var, width=32).grid(row=row, column=1, **pad)
+        row += 1
+
+        def _toggle_username():
+            username_entry.config(state="disabled" if has_account_var.get() else "normal")
+
+        ttk.Checkbutton(dialog, text="I already have an account", variable=has_account_var,
+                         command=_toggle_username).grid(
+            row=row, column=0, columnspan=2, sticky="w", **pad)
+        row += 1
+
+        ttk.Label(dialog, text="Email").grid(row=row, column=0, sticky="w", **pad)
+        ttk.Entry(dialog, textvariable=email_var, width=32).grid(row=row, column=1, **pad)
+        row += 1
+
+        ttk.Label(dialog, text="Username (new account)").grid(row=row, column=0, sticky="w", **pad)
+        username_entry = ttk.Entry(dialog, textvariable=username_var, width=32, state="disabled")
+        username_entry.grid(row=row, column=1, **pad)
+        row += 1
+
+        ttk.Label(dialog, text="Password").grid(row=row, column=0, sticky="w", **pad)
+        ttk.Entry(dialog, textvariable=password_var, width=32, show="*").grid(row=row, column=1, **pad)
+        row += 1
+
+        status_var = tk.StringVar(value="")
+        ttk.Label(dialog, textvariable=status_var, foreground="#a00", wraplength=280).grid(
+            row=row, column=0, columnspan=2, sticky="w", padx=12)
+        row += 1
+
+        submit_btn = ttk.Button(dialog, text="Sign in / Register")
+        submit_btn.grid(row=row, column=0, columnspan=2, pady=(4, 12))
+
+        def submit():
+            backend_url = url_var.get().strip().rstrip("/")
+            email = email_var.get().strip()
+            password = password_var.get()
+            has_account = has_account_var.get()
+            username = username_var.get().strip() or None
+            if not backend_url or not email or not password or (not has_account and not username):
+                status_var.set("Fill in every field.")
+                return
+            submit_btn.config(state="disabled")
+            status_var.set("Connecting...")
+
+            def worker():
+                ok, message = _register_device(
+                    self.agent.store, backend_url, has_account, email, password, username)
+                # http_post_json runs on this background thread so the
+                # dialog doesn't freeze while it waits on the network;
+                # Tk itself is not thread-safe, so every UI touch below
+                # is handed back to the main thread via root.after(0, ...)
+                # instead of being called directly from here.
+                self.root.after(0, lambda: finish(ok, message))
+
+            def finish(ok, message):
+                if ok:
+                    self.agent.backend_url = backend_url
+                    self.agent.device_token = self.agent.store.get_setting("device_token")
+                    self._update_register_button_label()
+                    dialog.destroy()
+                    self._messagebox.showinfo("KeyCount", message)
+                else:
+                    submit_btn.config(state="normal")
+                    status_var.set(message)
+
+            threading.Thread(target=worker, daemon=True).start()
+
+        submit_btn.config(command=submit)
+        dialog.bind("<Return>", lambda _e: submit())
+
+
 def main():
     parser = argparse.ArgumentParser(description="KeyCount agent MVP")
     parser.add_argument("--show-keys", action="store_true",
@@ -1058,10 +1347,15 @@ def main():
     parser.add_argument("--register", action="store_true",
                          help="Interactively sign in / sign up and link this device to a "
                               "KeyCount backend for syncing, then exit.")
-    parser.add_argument("--url", default="http://localhost:8080",
-                         help="Backend base URL to use with --register (default: http://localhost:8080).")
+    parser.add_argument("--url", default=DEFAULT_BACKEND_URL,
+                         help="Backend base URL to use with --register "
+                              f"(default: {DEFAULT_BACKEND_URL}).")
     parser.add_argument("--sync-now", action="store_true",
                          help="Run one manual sync pass against the configured backend and exit.")
+    parser.add_argument("--cli", action="store_true",
+                         help="Run the classic console-only tracker instead of opening the "
+                              "desktop window. Used automatically as a fallback if a GUI "
+                              "toolkit (tkinter) isn't available on this machine.")
     args = parser.parse_args()
 
     if args.register:
@@ -1073,7 +1367,7 @@ def main():
         backend_url = store.get_setting("backend_url")
         device_token = store.get_setting("device_token")
         if not (backend_url and device_token):
-            sys.exit("Not registered with a backend yet. Run `python3 agent.py --register` first.")
+            sys.exit(f"Not registered with a backend yet. Run `{_invocation()} --register` first.")
         count, error = sync_once(store, backend_url, device_token)
         if error:
             sys.exit(error)
@@ -1089,7 +1383,26 @@ def main():
         print(token)
         return
 
-    Agent().run()
+    if args.cli:
+        Agent().run()
+        return
+
+    # Desktop window is the default as of 2026-09-21 (direct request:
+    # "a ui or another method that is more user friendly" -> "A real
+    # desktop app window") -- most people running the packaged .exe/
+    # .app double-click it rather than passing flags, so that's the
+    # experience that needed to change. --cli above still gets the
+    # original console-only loop for anyone scripting/automating this
+    # (a startup task, a headless machine) or who just prefers it.
+    try:
+        import tkinter  # noqa: F401 -- availability probe only; AgentGUI does its own import
+    except ImportError:
+        print("Desktop UI unavailable on this system (tkinter isn't installed) -- "
+              "falling back to the console tracker. Pass --cli to skip this check next time.\n")
+        Agent().run()
+        return
+
+    AgentGUI(Agent()).run()
 
 
 if __name__ == "__main__":
