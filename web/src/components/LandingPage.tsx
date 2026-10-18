@@ -174,7 +174,7 @@ export default function LandingPage() {
                 <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#5f5a54" }} />
               </div>
               <img
-                src="/dashboard-preview.png"
+                src="/dashboard-preview.jpeg"
                 alt="KeyCount dashboard Today view, showing a keystroke chart, streak, and per-app breakdown"
                 style={{ display: "block", width: "100%", height: "auto" }}
                 loading="lazy"

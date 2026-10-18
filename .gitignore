@@ -7,3 +7,6 @@ __pycache__/
 # keycount-agent.spec and .github/workflows/release.yml
 build/
 dist/
+
+keycount-agent.spec
+.github/workflows/release.yml
