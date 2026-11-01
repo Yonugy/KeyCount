@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchLeaderboardKeystrokes,
@@ -36,6 +37,7 @@ const REFETCH_MS = 30_000;
 // router in this app (see main.tsx), and App.tsx's own path check on load
 // is what renders PublicProfilePage.tsx for a /u/:username URL.
 export default function LeaderboardsView() {
+  const location = useLocation();
   const [metric, setMetric] = useState<Metric>("keystrokes");
   const [window, setWindowValue] = useState<LeaderboardWindow>("daily");
   // Global/Friends scope toggle (2026-09-11, alongside the friendships
@@ -200,14 +202,15 @@ export default function LeaderboardsView() {
                 </span>
                 <span style={{ color: "var(--text-primary)", fontWeight: isMe ? 600 : 400 }}>
                   {entry.public_profile ? (
-                    <a
-                      href={`/u/${encodeURIComponent(entry.username)}`}
+                    <Link
+                    to={`/u/${encodeURIComponent(entry.username)}`}
+                    state={{ from: location.pathname + location.search }}
                       style={{ color: "inherit", textDecoration: "none" }}
                       onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
                       onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
                     >
                       {entry.username}
-                    </a>
+                    </Link>
                   ) : (
                     entry.username
                   )}

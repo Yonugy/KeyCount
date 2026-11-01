@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { getUsername, clearSession } from "../api";
 import TodayView from "./TodayView";
 import HistoryView from "./HistoryView";
@@ -11,6 +11,8 @@ import FriendsView from "./FriendsView";
 import SoundToggle from "./SoundToggle";
 
 type Tab = "today" | "history" | "keys" | "leaderboards" | "friends" | "profile" | "settings";
+
+const TABS: Tab[] = ["today", "history", "keys", "leaderboards", "friends", "profile", "settings"];
 
 const TAB_LABELS: Record<Tab, string> = {
   today: "Today",
@@ -29,7 +31,15 @@ const TAB_LABELS: Record<Tab, string> = {
 // lives moved to RequireAuth, one level up.
 export default function Dashboard() {
   const [username] = useState<string | null>(getUsername());
-  const [tab, setTab] = useState<Tab>("today");
+  // The active tab lives in the URL (/app?tab=friends) instead of plain
+  // state, so coming back from a profile page (browser Back or the page's
+  // own back link) lands on the same tab rather than resetting to Today.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const tab: Tab = TABS.includes(tabParam as Tab) ? (tabParam as Tab) : "today";
+  function setTab(t: Tab) {
+    setSearchParams(t === "today" ? {} : { tab: t }, { replace: true });
+  }
   const navigate = useNavigate();
 
   function handleLogout() {
@@ -103,7 +113,7 @@ export default function Dashboard() {
       </header>
 
       <nav style={{ display: "flex", gap: 4, marginBottom: 28, borderBottom: "1px solid var(--border)" }}>
-        {(["today", "history", "keys", "leaderboards", "friends", "profile", "settings"] as Tab[]).map((t) => (
+        {TABS.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}

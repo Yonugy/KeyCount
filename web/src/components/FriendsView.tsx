@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchFriends,
@@ -165,6 +166,7 @@ interface FriendListSectionProps {
 }
 
 function FriendListSection({ title, entries, emptyMessage, renderActions }: FriendListSectionProps) {
+  const location = useLocation();
   return (
     <section>
       <h2 style={{ fontSize: 15, color: "var(--text-secondary)", fontWeight: 600, margin: "0 0 12px" }}>
@@ -196,14 +198,15 @@ function FriendListSection({ title, entries, emptyMessage, renderActions }: Frie
             >
               <span style={{ color: "var(--text-primary)" }}>
                 {entry.public_profile ? (
-                  <a
-                    href={`/u/${encodeURIComponent(entry.username)}`}
+                  <Link
+                    to={`/u/${encodeURIComponent(entry.username)}`}
+                    state={{ from: location.pathname + location.search }}
                     style={{ color: "inherit", textDecoration: "none" }}
                     onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
                     onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
                   >
                     {entry.username}
-                  </a>
+                  </Link>
                 ) : (
                   entry.username
                 )}

@@ -212,8 +212,13 @@ export interface PublicProfile {
   username: string;
   member_since: string; // YYYY-MM-DD
   total_keystrokes: number;
+  total_clicks: number;
+  active_minutes: number;
   current_streak: number;
   longest_streak: number;
+  // Last ~90 days of daily keystroke totals (days with no activity are
+  // omitted) for the public profile's activity calendar.
+  activity: { date: string; total_keystrokes: number }[];
 }
 
 // Friendships (2026-09-11, request/accept model -- see backend/friends.go).

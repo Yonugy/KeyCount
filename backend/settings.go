@@ -87,9 +87,24 @@ type publicProfileResponse struct {
 	Username        string `json:"username"`
 	MemberSince     string `json:"member_since"` // "2006-01-02"
 	TotalKeystrokes int    `json:"total_keystrokes"`
+	TotalClicks     int    `json:"total_clicks"`
+	ActiveMinutes   int    `json:"active_minutes"`
 	CurrentStreak   int    `json:"current_streak"`
 	LongestStreak   int    `json:"longest_streak"`
+	// Activity is the last publicProfileActivityDays days of daily
+	// keystroke totals for the calendar on /u/:username. Days with no
+	// activity have no entry. Still no per-key or per-app data on the
+	// public page, only the same all-time totals the Profile tab shows.
+	Activity []publicActivityDay `json:"activity"`
 }
+
+type publicActivityDay struct {
+	Date            string `json:"date"`
+	TotalKeystrokes int    `json:"total_keystrokes"`
+}
+
+// Matches the 90-day window the dashboard's Heatmap component draws.
+const publicProfileActivityDays = 90
 
 // handlePublicProfile serves GET /v1/users/{username}/public-profile --
 // deliberately NO auth required, since the entire point of a "public"
@@ -120,11 +135,13 @@ func (s *Server) handlePublicProfile(w http.ResponseWriter, r *http.Request) {
 	resp := publicProfileResponse{
 		Username:    username,
 		MemberSince: memberSince.Format("2006-01-02"),
+		Activity:    []publicActivityDay{},
 	}
 
 	if err := s.DB.QueryRowContext(r.Context(),
-		`SELECT COALESCE(SUM(total_keystrokes), 0) FROM daily_rollups WHERE user_id = $1`, userID,
-	).Scan(&resp.TotalKeystrokes); err != nil {
+		`SELECT COALESCE(SUM(total_keystrokes), 0), COALESCE(SUM(total_clicks), 0), COALESCE(SUM(active_minutes), 0)
+		 FROM daily_rollups WHERE user_id = $1`, userID,
+	).Scan(&resp.TotalKeystrokes, &resp.TotalClicks, &resp.ActiveMinutes); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load profile stats")
 		return
 	}
@@ -134,6 +151,32 @@ func (s *Server) handlePublicProfile(w http.ResponseWriter, r *http.Request) {
 	_ = s.DB.QueryRowContext(r.Context(),
 		`SELECT current_streak, longest_streak FROM streaks WHERE user_id = $1`, userID,
 	).Scan(&resp.CurrentStreak, &resp.LongestStreak)
+
+	since := time.Now().UTC().AddDate(0, 0, -publicProfileActivityDays)
+	rows, err := s.DB.QueryContext(r.Context(),
+		`SELECT date, total_keystrokes FROM daily_rollups
+		 WHERE user_id = $1 AND date >= $2 ORDER BY date`,
+		userID, since.Format("2006-01-02"),
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load profile activity")
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var d publicActivityDay
+		var date time.Time
+		if err := rows.Scan(&date, &d.TotalKeystrokes); err != nil {
+			writeError(w, http.StatusInternalServerError, "could not read profile activity")
+			return
+		}
+		d.Date = date.Format("2006-01-02")
+		resp.Activity = append(resp.Activity, d)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not read profile activity")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, resp)
 }

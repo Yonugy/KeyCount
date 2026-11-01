@@ -55,9 +55,10 @@ export default function SettingsView() {
             </span>
           </label>
           <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-            Anyone with the link can see your total keystrokes and streaks --
-            nothing else, and no sign-in required to view it. Your app-by-app
-            or per-key breakdown is never shown here.
+            Anyone with the link can see your all-time totals (keystrokes,
+            clicks, active minutes), your streaks and your last 90 days
+            activity calendar, with no sign-in required. Your app-by-app or
+            per-key breakdown is never shown.
           </p>
 
           {settings.public_profile && (
