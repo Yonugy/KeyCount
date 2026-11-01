@@ -204,6 +204,7 @@ export default function LeaderboardsView() {
                   {entry.public_profile ? (
                     <Link
                     to={`/u/${encodeURIComponent(entry.username)}`}
+                    data-click-sound
                     state={{ from: location.pathname + location.search }}
                       style={{ color: "inherit", textDecoration: "none" }}
                       onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}

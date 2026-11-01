@@ -64,7 +64,10 @@ import {
 // before the button's own onClick (and therefore before React's
 // re-render) ever fires, so isDisabled(el) always reflects the state the
 // element was actually in when the visitor clicked it.
-const INTERACTIVE_SELECTOR = 'button, [role="button"], nav a';
+// [data-click-sound] opts a plain link outside any <nav> into the same
+// button sounds -- the Friends / Leaderboards username links and the
+// public profile's back link, which otherwise matched nothing here.
+const INTERACTIVE_SELECTOR = 'button, [role="button"], nav a, [data-click-sound]';
 
 function isDisabled(el: Element): boolean {
   if (el instanceof HTMLButtonElement && el.disabled) return true;

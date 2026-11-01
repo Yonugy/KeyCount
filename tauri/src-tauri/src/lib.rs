@@ -80,6 +80,7 @@ fn hook_json(h: &HookStatus) -> Value {
         HookStatus::Starting => json!({ "state": "starting" }),
         HookStatus::Running => json!({ "state": "running" }),
         HookStatus::NeedsPermission(m) => json!({ "state": "needs_permission", "message": m }),
+        HookStatus::NeedsRestart(m) => json!({ "state": "needs_restart", "message": m }),
         HookStatus::Failed(m) => json!({ "state": "failed", "message": m }),
         HookStatus::Unsupported => json!({ "state": "unsupported" }),
     }
@@ -146,6 +147,34 @@ fn sign_out(state: State<'_, AppState>) -> Result<(), String> {
 fn open_dashboard(app: AppHandle) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
     app.opener().open_url(DASHBOARD_URL, None::<&str>).map_err(|e| e.to_string())
+}
+
+/// Opens the macOS Input Monitoring list (System Settings > Privacy &
+/// Security > Input Monitoring). Other systems have no such page.
+#[tauri::command]
+fn open_input_settings(app: AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri_plugin_opener::OpenerExt;
+        app.opener()
+            .open_url("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent", None::<&str>)
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Err("There is no input permission page on this system.".into())
+    }
+}
+
+/// Relaunches KeyCount, for after macOS input access was granted. Goes
+/// through the normal exit path, so today's counts are flushed and the
+/// single-instance lock is released before the new copy starts. The new
+/// copy opens its window even if this one was started hidden at login.
+#[tauri::command]
+fn restart_app(app: AppHandle, state: State<'_, AppState>) {
+    let _ = state.store.set_setting("show_after_restart", "1");
+    app.request_restart();
 }
 
 #[tauri::command]
@@ -260,7 +289,16 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .manage(state)
-        .invoke_handler(tauri::generate_handler![get_status, register, sync_now, sign_out, open_dashboard, set_autostart])
+        .invoke_handler(tauri::generate_handler![
+            get_status,
+            register,
+            sync_now,
+            sign_out,
+            open_dashboard,
+            open_input_settings,
+            restart_app,
+            set_autostart
+        ])
         .setup(move |app| {
             let show = MenuItem::with_id(app, "show", "Open KeyCount", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -284,7 +322,25 @@ pub fn run() {
             }
             tray.build(app)?;
 
-            if !start_hidden {
+            // First launch of an installed build: add KeyCount to the login
+            // items once. After that the Settings checkbox decides, so
+            // unticking it sticks. Skipped in debug builds so `cargo tauri
+            // dev` doesn't register a development binary as a login item.
+            #[cfg(not(debug_assertions))]
+            {
+                let state = app.state::<AppState>();
+                if state.store.get_setting("autostart_initialized").is_none() {
+                    let _ = app.autolaunch().enable();
+                    let _ = state.store.set_setting("autostart_initialized", "1");
+                }
+            }
+
+            let state = app.state::<AppState>();
+            let after_restart = state.store.get_setting("show_after_restart").as_deref() == Some("1");
+            if after_restart {
+                let _ = state.store.set_setting("show_after_restart", "");
+            }
+            if !start_hidden || after_restart {
                 show_main(app.handle());
             }
             Ok(())

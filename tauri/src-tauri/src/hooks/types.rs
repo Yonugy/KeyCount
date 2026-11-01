@@ -19,6 +19,9 @@ pub enum HookStatus {
     Running,
     /// The OS is withholding input access until the user allows it.
     NeedsPermission(String),
+    /// Access was granted after the listener started. The OS only starts
+    /// delivering input to the app after it is relaunched.
+    NeedsRestart(String),
     Failed(String),
     /// No listener for this OS (only Windows and macOS are built).
     Unsupported,

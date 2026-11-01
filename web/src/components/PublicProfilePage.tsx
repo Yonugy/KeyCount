@@ -46,7 +46,7 @@ export default function PublicProfilePage({ username }: PublicProfilePageProps) 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: "48px 32px" }}>
       <div style={{ marginBottom: 32 }}>
-        <Link to={from ?? "/"} style={{ color: "var(--text-muted)", fontSize: 13, textDecoration: "none" }}>
+        <Link to={from ?? "/"} data-click-sound style={{ color: "var(--text-muted)", fontSize: 13, textDecoration: "none" }}>
           &larr; {from ? "Back" : "KeyCount"}
         </Link>
       </div>

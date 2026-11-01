@@ -1,6 +1,6 @@
 [package]
 name = "keycount-app"
-version = "0.2.0"
+version = "0.2.1"
 description = "KeyCount desktop agent (Tauri)"
 edition = "2021"
 

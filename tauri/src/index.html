@@ -23,6 +23,8 @@
   .banner.warn{background:#2a2412;border-color:#5a4a16;color:#f6d77a}
   .banner.bad{background:#2a1517;border-color:#5a2227;color:#f7a3a3}
   .banner[hidden]{display:none}
+  .bannerActions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .bannerActions:not(:has(button:not([hidden]))){display:none}
   label{display:block;color:var(--mute);font-size:12px;margin:8px 0 3px}
   input[type=text],input[type=email],input[type=password]{width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:#0f1218;color:var(--text);font:inherit}
   input:focus{outline:2px solid var(--accent);outline-offset:-1px}
@@ -60,7 +62,13 @@
   <h1>KeyCount</h1>
   <p class="sub">Counts keys and clicks, never what you type. <span id="ver"></span></p>
 
-  <div id="hookBanner" class="banner warn" hidden></div>
+  <div id="hookBanner" class="banner warn" hidden>
+    <span id="hookMsg"></span>
+    <div class="bannerActions">
+      <button type="button" id="inputSettingsBtn" hidden>Open Input Monitoring settings</button>
+      <button type="button" id="restartBtn" class="primary" hidden>Restart KeyCount</button>
+    </div>
+  </div>
   <div id="portBanner" class="banner warn" hidden></div>
 
   <section class="card">
@@ -159,7 +167,7 @@
     return "Synced " + Math.round(s / 60) + " min ago";
   }
   function permissionHelp(os) {
-    if (os === "macos") return "KeyCount needs Input Monitoring. Open System Settings, Privacy & Security, Input Monitoring, switch KeyCount on, then quit KeyCount from the tray and open it again.";
+    if (os === "macos") return "KeyCount needs Input Monitoring to count keys. Open Input Monitoring settings and switch KeyCount on.";
     if (os === "windows") return "Windows blocked the input listener. If you use security software, allow KeyCount, then reopen it.";
     return "Input tracking is not available on this system.";
   }
@@ -179,18 +187,24 @@
     $("autostart").checked = !!s.autostart;
 
     var h = s.hook || {}, dot = $("hookDot"), txt = $("hookText"), ban = $("hookBanner");
+    var showBanner = function (cls, text) { ban.className = "banner " + cls; $("hookMsg").textContent = text; ban.hidden = false; };
     ban.hidden = true; dot.className = "dot";
+    $("inputSettingsBtn").hidden = !(s.os === "macos" && h.state === "needs_permission");
+    $("restartBtn").hidden = h.state !== "needs_restart";
     if (h.state === "running") {
       dot.classList.add("good");
       txt.textContent = s.active ? "Counting, you are active" : "Counting, idle";
     } else if (h.state === "starting") {
       txt.textContent = "Starting input tracking";
     } else if (h.state === "needs_permission") {
-      dot.classList.add("bad"); txt.textContent = "Not counting yet";
-      ban.className = "banner warn"; ban.textContent = h.message || permissionHelp(s.os); ban.hidden = false;
+      dot.classList.add("bad"); txt.textContent = s.os === "macos" ? "Not counting keys yet" : "Not counting yet";
+      showBanner("warn", h.message || permissionHelp(s.os));
+    } else if (h.state === "needs_restart") {
+      dot.classList.add("bad"); txt.textContent = "Restart needed to count keys";
+      showBanner("warn", h.message || "Restart KeyCount to start counting keys.");
     } else {
       dot.classList.add("bad"); txt.textContent = "Not counting";
-      ban.className = "banner bad"; ban.textContent = h.message || permissionHelp(s.os); ban.hidden = false;
+      showBanner("bad", h.message || permissionHelp(s.os));
     }
 
     var pb = $("portBanner");
@@ -214,6 +228,17 @@
     $("formMsg").hidden = true;
   }
   $("switchBtn").onclick = function () { setMode(!hasAccount); };
+
+  $("inputSettingsBtn").onclick = function () {
+    invoke("open_input_settings").catch(function (err) { $("hookText").textContent = String(err); });
+  };
+  $("restartBtn").onclick = function () {
+    $("restartBtn").disabled = true; $("restartBtn").textContent = "Restarting...";
+    invoke("restart_app").catch(function (err) {
+      $("restartBtn").disabled = false; $("restartBtn").textContent = "Restart KeyCount";
+      $("hookText").textContent = String(err);
+    });
+  };
 
   function msg(el, text, ok) { el.hidden = false; el.className = "msg " + (ok ? "ok" : "err"); el.textContent = text; }
 
