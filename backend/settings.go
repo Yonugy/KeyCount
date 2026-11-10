@@ -101,6 +101,9 @@ type publicProfileResponse struct {
 type publicActivityDay struct {
 	Date            string `json:"date"`
 	TotalKeystrokes int    `json:"total_keystrokes"`
+	// Clicks let the calendar mark days that count toward the streak but
+	// had no keystrokes, so the streak and the calendar agree.
+	TotalClicks int `json:"total_clicks"`
 }
 
 // Matches the 90-day window the dashboard's Heatmap component draws.
@@ -148,13 +151,15 @@ func (s *Server) handlePublicProfile(w http.ResponseWriter, r *http.Request) {
 
 	// No streaks row yet (never had an active day) just leaves these at
 	// zero -- same "ignore the no-rows case" pattern handleMeStats uses.
+	var lastActive *string
 	_ = s.DB.QueryRowContext(r.Context(),
-		`SELECT current_streak, longest_streak FROM streaks WHERE user_id = $1`, userID,
-	).Scan(&resp.CurrentStreak, &resp.LongestStreak)
+		`SELECT current_streak, longest_streak, last_active_date::text FROM streaks WHERE user_id = $1`, userID,
+	).Scan(&resp.CurrentStreak, &resp.LongestStreak, &lastActive)
+	resp.CurrentStreak = effectiveCurrentStreak(resp.CurrentStreak, lastActive, clientToday(r))
 
 	since := time.Now().UTC().AddDate(0, 0, -publicProfileActivityDays)
 	rows, err := s.DB.QueryContext(r.Context(),
-		`SELECT date, total_keystrokes FROM daily_rollups
+		`SELECT date, total_keystrokes, total_clicks FROM daily_rollups
 		 WHERE user_id = $1 AND date >= $2 ORDER BY date`,
 		userID, since.Format("2006-01-02"),
 	)
@@ -166,7 +171,7 @@ func (s *Server) handlePublicProfile(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var d publicActivityDay
 		var date time.Time
-		if err := rows.Scan(&date, &d.TotalKeystrokes); err != nil {
+		if err := rows.Scan(&date, &d.TotalKeystrokes, &d.TotalClicks); err != nil {
 			writeError(w, http.StatusInternalServerError, "could not read profile activity")
 			return
 		}

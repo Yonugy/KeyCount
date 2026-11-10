@@ -109,10 +109,12 @@ func (s *Server) handleMeStats(w http.ResponseWriter, r *http.Request) {
 
 	// No row yet (user has never had an active day) just leaves these at
 	// zero -- that's fine, so the error here is intentionally ignored.
+	var lastActive *string
 	_ = s.DB.QueryRowContext(r.Context(),
-		`SELECT current_streak, longest_streak FROM streaks WHERE user_id = $1`,
+		`SELECT current_streak, longest_streak, last_active_date::text FROM streaks WHERE user_id = $1`,
 		userID,
-	).Scan(&resp.CurrentStreak, &resp.LongestStreak)
+	).Scan(&resp.CurrentStreak, &resp.LongestStreak, &lastActive)
+	resp.CurrentStreak = effectiveCurrentStreak(resp.CurrentStreak, lastActive, clientToday(r))
 
 	writeJSON(w, http.StatusOK, resp)
 }

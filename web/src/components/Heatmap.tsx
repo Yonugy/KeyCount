@@ -13,9 +13,16 @@ interface HeatmapProps {
   // page competing for room the way History's chart+heatmap pairing does.
   cellSize?: number;
   gap?: number;
+  // Profile calendars: a day with clicks but no keystrokes still counts
+  // toward the streak, so give it a faint "active" outline instead of
+  // leaving it looking empty, and show clicks in the tooltip.
+  markClickOnly?: boolean;
 }
 
 const SEQ_STEPS = ["var(--seq-0)", "var(--seq-1)", "var(--seq-2)", "var(--seq-3)", "var(--seq-4)", "var(--seq-5)"];
+
+// Faint outline for days with clicks but no keystrokes (markClickOnly).
+const CLICK_ONLY_BORDER = "2px solid var(--seq-3)";
 
 const METRIC_UNIT: Record<HeatmapProps["metric"], string> = {
   total_keystrokes: "keystrokes",
@@ -37,6 +44,7 @@ function formatDateLabel(iso: string): string {
 interface HoverState {
   date: string;
   value: number;
+  clicks: number;
   x: number;
   y: number;
 }
@@ -48,9 +56,11 @@ interface HoverState {
 // rect (fixed positioning, so it's never clipped by this container's own
 // horizontal scrollbar) -- mirrors the line chart's tooltip instead of
 // relying on the browser's plain native title tooltip.
-export default function Heatmap({ days, metric, cellSize = 11, gap = 3 }: HeatmapProps) {
+export default function Heatmap({ days, metric, cellSize = 11, gap = 3, markClickOnly = false }: HeatmapProps) {
   const [hover, setHover] = useState<HoverState | null>(null);
   const byDate = new Map(days.map((d) => [d.date, d[metric]]));
+  const clicksByDate = new Map(days.map((d) => [d.date, d.total_clicks]));
+  const radius = Math.max(2, Math.round(cellSize / 5));
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -61,11 +71,11 @@ export default function Heatmap({ days, metric, cellSize = 11, gap = 3 }: Heatma
   // back up to the most recent Sunday so full weeks line up as columns
   start.setDate(start.getDate() - start.getDay());
 
-  const cells: { date: string; value: number }[] = [];
+  const cells: { date: string; value: number; clicks: number }[] = [];
   const cursor = new Date(start);
   while (cursor <= today) {
     const iso = toLocalISODate(cursor);
-    cells.push({ date: iso, value: byDate.get(iso) ?? 0 });
+    cells.push({ date: iso, value: byDate.get(iso) ?? 0, clicks: clicksByDate.get(iso) ?? 0 });
     cursor.setDate(cursor.getDate() + 1);
   }
 
@@ -75,7 +85,7 @@ export default function Heatmap({ days, metric, cellSize = 11, gap = 3 }: Heatma
     return Math.min(5, Math.max(1, Math.ceil((value / max) * 5)));
   };
 
-  const weeks: { date: string; value: number }[][] = [];
+  const weeks: { date: string; value: number; clicks: number }[][] = [];
   for (let i = 0; i < cells.length; i += 7) {
     weeks.push(cells.slice(i, i + 7));
   }
@@ -87,6 +97,7 @@ export default function Heatmap({ days, metric, cellSize = 11, gap = 3 }: Heatma
           <div key={wi} style={{ display: "flex", flexDirection: "column", gap }}>
             {week.map((cell) => {
               const inFuture = cell.date > todayIso;
+              const clickOnly = markClickOnly && !inFuture && cell.value === 0 && cell.clicks > 0;
               return (
                 <div
                   key={cell.date}
@@ -95,13 +106,15 @@ export default function Heatmap({ days, metric, cellSize = 11, gap = 3 }: Heatma
                   onMouseEnter={(e) => {
                     if (inFuture) return;
                     const rect = e.currentTarget.getBoundingClientRect();
-                    setHover({ date: cell.date, value: cell.value, x: rect.left + rect.width / 2, y: rect.top });
+                    setHover({ date: cell.date, value: cell.value, clicks: cell.clicks, x: rect.left + rect.width / 2, y: rect.top });
                   }}
                   onMouseLeave={() => setHover(null)}
                   style={{
-                    width: cellSize,
-                    height: cellSize,
-                    borderRadius: Math.max(2, Math.round(cellSize / 5)),
+                    // The click-only border is 1px thicker per side, so
+                    // shrink the box to keep every cell the same outer size.
+                    width: clickOnly ? cellSize - 2 : cellSize,
+                    height: clickOnly ? cellSize - 2 : cellSize,
+                    borderRadius: radius,
                     background: inFuture ? "transparent" : SEQ_STEPS[stepFor(cell.value)],
                     // Every real day gets an outline, not just the ones with
                     // activity -- added 2026-09-03 per direct report/request
@@ -113,7 +126,7 @@ export default function Heatmap({ days, metric, cellSize = 11, gap = 3 }: Heatma
                     // floating colored squares with no grid. Future dates
                     // (the tail of the last, not-yet-complete week) stay
                     // borderless -- they aren't real days yet.
-                    border: inFuture ? "none" : "1px solid var(--border)",
+                    border: inFuture ? "none" : clickOnly ? CLICK_ONLY_BORDER : "1px solid var(--border)",
                     cursor: inFuture ? "default" : "pointer",
                   }}
                 />
@@ -137,6 +150,21 @@ export default function Heatmap({ days, metric, cellSize = 11, gap = 3 }: Heatma
           <div key={i} style={{ width: cellSize, height: cellSize, borderRadius: Math.max(2, Math.round(cellSize / 5)), background: color, border: "1px solid var(--border)" }} />
         ))}
         <span>More</span>
+        {markClickOnly && (
+          <>
+            <div
+              style={{
+                width: cellSize - 2,
+                height: cellSize - 2,
+                borderRadius: radius,
+                background: SEQ_STEPS[0],
+                border: CLICK_ONLY_BORDER,
+                marginLeft: 12,
+              }}
+            />
+            <span>Clicks only</span>
+          </>
+        )}
       </div>
 
       {hover && (
@@ -163,6 +191,11 @@ export default function Heatmap({ days, metric, cellSize = 11, gap = 3 }: Heatma
             {/* {hover.date === todayIso ? " (so far)" : ""} */}
             {hover.date === todayIso}
           </div>
+          {markClickOnly && (
+            <div style={{ color: "var(--text-secondary)", marginTop: 2 }}>
+              {hover.clicks.toLocaleString()} clicks
+            </div>
+          )}
         </div>
       )}
     </div>

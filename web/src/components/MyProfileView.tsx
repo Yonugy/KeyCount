@@ -123,7 +123,7 @@ export default function MyProfileView({ onManageVisibility }: MyProfileViewProps
             actually stops it reading as parked in a corner. */}
         {filledDays && (
           <div style={{ display: "flex", justifyContent: "center" }}>
-            <Heatmap days={filledDays} metric="total_keystrokes" cellSize={20} gap={6} />
+            <Heatmap days={filledDays} metric="total_keystrokes" markClickOnly cellSize={20} gap={6} />
           </div>
         )}
       </div>

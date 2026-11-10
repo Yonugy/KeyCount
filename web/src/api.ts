@@ -218,7 +218,7 @@ export interface PublicProfile {
   longest_streak: number;
   // Last ~90 days of daily keystroke totals (days with no activity are
   // omitted) for the public profile's activity calendar.
-  activity: { date: string; total_keystrokes: number }[];
+  activity: { date: string; total_keystrokes: number; total_clicks?: number }[];
 }
 
 // Friendships (2026-09-11, request/accept model -- see backend/friends.go).
@@ -252,8 +252,18 @@ export function signup(email: string, username: string, password: string) {
   });
 }
 
+// The viewer's local date, sent so the backend can tell whether the
+// current streak is still alive ("today or yesterday was active") by the
+// viewer's calendar instead of UTC. Same format as utils' toLocalISODate,
+// inlined to keep api.ts free of imports from utils (which imports types
+// from here).
+function localToday(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function fetchStats(range: Range) {
-  return request<Stats>(`/v1/me/stats?range=${range}`);
+  return request<Stats>(`/v1/me/stats?range=${range}&today=${localToday()}`);
 }
 
 export function fetchAppsBreakdown(range: Range) {
@@ -310,7 +320,7 @@ export function updatePublicProfile(publicProfile: boolean) {
 // backend's handlePublicProfile doesn't require one at all (see its own
 // comment: that's the entire point of a "public" profile page).
 export function fetchPublicProfile(username: string) {
-  return request<PublicProfile>(`/v1/users/${encodeURIComponent(username)}/public-profile`);
+  return request<PublicProfile>(`/v1/users/${encodeURIComponent(username)}/public-profile?today=${localToday()}`);
 }
 
 export function fetchFriends() {

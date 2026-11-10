@@ -96,12 +96,13 @@ export default function PublicProfilePage({ username }: PublicProfilePageProps) 
                   (p.activity ?? []).map((a) => ({
                     date: a.date,
                     total_keystrokes: a.total_keystrokes,
-                    total_clicks: 0,
+                    total_clicks: a.total_clicks ?? 0,
                     active_minutes: 0,
                   })),
                   CALENDAR_DAYS,
                 )}
                 metric="total_keystrokes"
+                markClickOnly
                 cellSize={18}
                 gap={5}
               />
